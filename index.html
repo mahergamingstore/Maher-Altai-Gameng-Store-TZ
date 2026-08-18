@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="sw">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maher Game Store</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14121F; --surface:#1E1B2E; --surfaceLight:#272341; --border:#332C52;
+  --gold:#F2B705; --goldDark:#C9930A; --teal:#35D0BA; --text:#F5F3FF; --muted:#9B93B5; --danger:#E85D5D;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Space Grotesk',sans-serif;padding-bottom:70px;}
+.pixel{font-family:'Press Start 2P',monospace;}
+.mono{font-family:'JetBrains Mono',monospace;}
+button{font-family:inherit;}
+input,select,textarea{font-family:inherit;}
+.wrap{max-width:1100px;margin:0 auto;padding:0 20px;}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+::-webkit-scrollbar{height:6px;width:6px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+/* ===== AUTH GATE ===== */
+.authScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px 16px;}
+.authBox{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px 24px;}
+.authLogo{display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:22px;}
+.authTabs{display:flex;background:var(--surfaceLight);border-radius:10px;padding:4px;margin-bottom:20px;}
+.authTab{flex:1;text-align:center;padding:9px 0;border-radius:8px;cursor:pointer;font-size:13px;color:var(--muted);border:none;background:transparent;font-weight:600;}
+.authTab.active{background:var(--gold);color:#1A1502;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.inputRow{display:flex;align-items:center;gap:8px;background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;padding:11px 13px;}
+.inputRow input,.inputRow select{background:transparent;border:none;outline:none;color:var(--text);width:100%;font-size:14px;}
+.authBtn{width:100%;background:var(--gold);color:#1A1502;border:none;border-radius:10px;padding:13px 0;font-weight:700;font-size:14px;cursor:pointer;margin-top:6px;}
+.authNote{font-size:11px;color:var(--muted);text-align:center;margin-top:14px;line-height:1.6;}
+.authError{color:var(--danger);font-size:12px;margin-bottom:10px;}
+.adminLink{display:block;text-align:center;margin-top:16px;color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;background:none;border:none;width:100%;}
+
+/* ===== HEADER ===== */
+header{border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20;}
+.headerRow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 20px;max-width:1100px;margin:0 auto;}
+.logo{display:flex;align-items:center;gap:9px;font-size:13px;letter-spacing:1px;}
+.headerRight{display:flex;align-items:center;gap:10px;}
+.iconBtn{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px;display:flex;color:var(--text);cursor:pointer;}
+.badge{position:absolute;top:-6px;right:-6px;background:var(--gold);color:#1A1502;font-size:10px;font-weight:700;border-radius:999px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;}
+.userChip{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:7px 12px;font-size:12px;}
+
+/* ===== SLIDESHOW ===== */
+.slideshow{position:relative;height:230px;overflow:hidden;border-radius:0;margin-bottom:6px;}
+.slide{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;opacity:0;transition:opacity .5s ease;padding:0 20px;}
+.slide.active{opacity:1;}
+.slideCat{font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.85);margin-bottom:8px;}
+.slideTitle{font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;}
+.slidePrice{font-size:13px;color:#fff;opacity:.9;}
+.slideDots{position:absolute;bottom:14px;left:0;right:0;display:flex;gap:6px;justify-content:center;}
+.dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.4);}
+.dot.active{background:#fff;width:18px;border-radius:4px;}
+
+/* ===== SECTIONS ===== */
+.sectionTitle{font-size:15px;font-weight:700;margin:26px 0 12px;display:flex;align-items:center;gap:8px;}
+.searchBox{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin:18px 0 6px;}
+.searchBox input{background:transparent;border:none;outline:none;color:var(--text);width:100%;font-size:14px;}
+.chipsRow{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0;}
+.chip{padding:8px 14px;border-radius:999px;cursor:pointer;font-size:12px;border:1px solid var(--border);background:transparent;color:var(--muted);}
+.chip.active{border-color:var(--gold);background:rgba(242,183,5,0.12);color:var(--gold);}
+.hScroll{display:flex;gap:16px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x proximity;}
+.hScroll .card{flex:0 0 200px;scroll-snap-align:start;}
+.emptyMsg{color:var(--muted);font-size:14px;padding:20px 0;}
+
+/* ===== CARD ===== */
+.card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+.card::after{content:"";position:absolute;left:12px;right:12px;top:112px;height:0;border-top:2px dashed var(--border);}
+.notch{position:absolute;top:106px;width:12px;height:12px;background:var(--bg);border-radius:50%;}
+.notch.l{left:-6px;} .notch.r{right:-6px;}
+.cover{height:112px;display:flex;align-items:center;justify-content:center;position:relative;background-size:cover;background-position:center;}
+.cover svg{opacity:.9;}
+.favBtn{position:absolute;top:8px;right:8px;background:rgba(20,18,31,.6);border:none;border-radius:8px;padding:6px;cursor:pointer;display:flex;color:#fff;}
+.favBtn.active{color:var(--gold);}
+.cardBody{padding:20px 14px 14px;}
+.cardMeta{font-size:10px;color:var(--muted);margin-bottom:5px;display:flex;justify-content:space-between;}
+.cardTitle{font-size:14px;font-weight:700;margin:0 0 4px;}
+.cardDesc{font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.4;min-height:28px;}
+.cardFoot{display:flex;align-items:center;justify-content:space-between;}
+.price{font-size:12px;font-weight:700;}
+.price.free{color:var(--teal);} .price.paid{color:var(--gold);}
+.actionBtn{display:flex;align-items:center;gap:5px;border:none;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer;}
+.btnGold{background:var(--gold);color:#1A1502;}
+.btnTeal{background:var(--teal);color:#08221D;}
+.btnGhostGold{background:transparent;color:var(--gold);border:1px solid var(--gold);}
+.btnGhostTeal{background:transparent;color:var(--teal);border:1px solid var(--teal);}
+
+/* ===== VIEW PAGES ===== */
+.pageHead{padding:26px 20px 4px;}
+.pageHead h2{font-size:18px;margin:0 0 6px;}
+.pageHead p{color:var(--muted);font-size:13px;margin:0;}
+.libGrid{padding:16px 20px 40px;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;max-width:1100px;margin:0 auto;}
+.helpCard{margin:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;display:flex;gap:14px;align-items:center;}
+.helpCard .txt div:first-child{font-weight:700;font-size:14px;margin-bottom:3px;}
+.helpCard .txt div:last-child{color:var(--muted);font-size:12px;}
+.waIcon{background:rgba(53,208,186,.15);color:var(--teal);border-radius:12px;padding:12px;display:flex;flex-shrink:0;}
+.waBtn{margin-left:auto;background:var(--teal);color:#08221D;text-decoration:none;font-size:12px;font-weight:700;padding:9px 14px;border-radius:8px;}
+.socialGrid{display:flex;gap:12px;padding:0 20px;flex-wrap:wrap;}
+.socialIcon{width:52px;height:52px;border-radius:14px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--text);text-decoration:none;}
+.adCard{margin:12px 20px;background:linear-gradient(135deg,var(--surfaceLight),var(--surface));border:1px dashed var(--border);border-radius:14px;padding:20px;text-align:center;color:var(--muted);font-size:13px;}
+.adCard b{color:var(--gold);display:block;font-size:14px;margin-bottom:4px;}
+
+/* ===== BOTTOM NAV ===== */
+.bottomNav{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:30;}
+.navBtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0 8px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:10px;}
+.navBtn.active{color:var(--gold);}
+
+/* ===== DRAWER (cart) ===== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:49;display:none;}
+.overlay.show{display:block;}
+.drawer{position:fixed;right:0;top:0;bottom:0;width:min(380px,100%);background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;z-index:50;transform:translateX(100%);transition:transform .25s ease-out;}
+.drawer.show{transform:translateX(0);}
+.drawerHead{padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.closeBtn{background:none;border:none;color:var(--muted);cursor:pointer;}
+.cartList{flex:1;overflow-y:auto;padding:16px;}
+.cartItem{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.cartThumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;}
+.cartInfo{flex:1;}
+.cartInfo .t{font-size:14px;font-weight:600;}
+.cartInfo .p{font-size:12px;color:var(--gold);}
+.rmBtn{background:none;border:none;color:var(--danger);cursor:pointer;}
+.cartFoot{padding:20px;border-top:1px solid var(--border);}
+.cartFoot .row{display:flex;justify-content:space-between;margin-bottom:14px;}
+.fullBtn{width:100%;background:var(--gold);color:#1A1502;border:none;border-radius:10px;padding:13px 0;font-weight:700;font-size:14px;cursor:pointer;}
+.payPane{padding:20px;display:flex;flex-direction:column;gap:14px;}
+.payPane input{background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-size:14px;}
+.backBtn{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;}
+.donePane{padding:20px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;margin-top:30px;}
+.doneIcon{width:56px;height:56px;border-radius:50%;background:rgba(53,208,186,0.15);display:flex;align-items:center;justify-content:center;}
+
+/* ===== TOAST ===== */
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;padding:12px 20px;font-size:13px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s ease;}
+.toast.show{opacity:1;}
+
+/* ===== ADMIN ===== */
+.adminWrap{max-width:900px;margin:0 auto;padding:20px;}
+.adminHead{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.adminTabs{display:flex;gap:8px;margin-bottom:20px;}
+.adminTab{padding:9px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;}
+.adminTab.active{background:var(--gold);color:#1A1502;border-color:var(--gold);}
+.formGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;}
+.formGrid .full{grid-column:1/-1;}
+.formGrid label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.formGrid input,.formGrid select,.formGrid textarea{width:100%;background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;}
+.formGrid textarea{resize:vertical;min-height:60px;}
+.checkRow{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);}
+.imgPreview{width:100%;height:100px;border-radius:10px;background:var(--surfaceLight);display:flex;align-items:center;justify-content:center;overflow:hidden;background-size:cover;background-position:center;margin-top:8px;}
+.adminGamesList{margin-top:24px;display:flex;flex-direction:column;gap:10px;}
+.adminGameRow{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+.adminThumb{width:44px;height:44px;border-radius:8px;flex-shrink:0;background-size:cover;background-position:center;}
+.adminGameRow .info{flex:1;min-width:0;}
+.adminGameRow .info .t{font-size:13px;font-weight:700;}
+.adminGameRow .info .m{font-size:11px;color:var(--muted);}
+.trendBadge{font-size:10px;background:rgba(242,183,5,.15);color:var(--gold);padding:3px 8px;border-radius:999px;}
+.rowBtn{background:var(--surfaceLight);border:1px solid var(--border);border-radius:8px;padding:7px;cursor:pointer;color:var(--text);}
+.rowBtn.danger{color:var(--danger);}
+.settingsPanel{display:flex;flex-direction:column;gap:16px;}
+.settingsCard{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;}
+.settingsCard h3{margin:0 0 6px;font-size:15px;}
+.settingsCard p{margin:0 0 14px;color:var(--muted);font-size:12px;}
+.settingsRows{display:flex;flex-direction:column;gap:10px;}
+.settingsRow{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;}
+.settingsRow input,.settingsRow textarea{width:100%;background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;padding:10px 12px;color:var(--text);font-size:13px;}
+.settingsRow label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+.settingsActions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+@media(max-width:600px){.settingsRow{grid-template-columns:1fr;}.adminTabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.adminTab{white-space:nowrap;}}
+
+
+/* ===== NAV / MOBILE FIXES ===== */
+body{padding-bottom:88px;overflow-x:hidden;}
+#viewContent{min-height:calc(100vh - 150px);}
+.bottomNav{height:72px;padding-bottom:env(safe-area-inset-bottom);box-shadow:0 -6px 20px rgba(0,0,0,.18);}
+.navBtn{min-width:0;position:relative;z-index:31;}
+.navBtn span{white-space:nowrap;}
+@media(max-width:520px){
+  .headerRow{padding:12px 14px;}
+  .wrap{padding:0 14px;}
+  .pageHead{padding:22px 14px 4px;}
+  .libGrid{padding:14px 14px 36px;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+  .hScroll{gap:10px;}
+  .hScroll .card{flex-basis:180px;}
+  .cardBody{padding:18px 11px 12px;}
+  .bottomNav{height:68px;}
+  .navBtn{padding:8px 0 6px;font-size:9px;}
+}
+@media(max-width:420px){
+  .libGrid{grid-template-columns:1fr;}
+  .headerRight{gap:5px;}
+  .userChip{max-width:100px;overflow:hidden;text-overflow:ellipsis;}
+}
+.formGrid .imageField{display:flex;flex-direction:column;}
+.imagePicker{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.imagePicker input[type=file]{padding:8px;background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;color:var(--muted);}
+.emuPreview{height:90px;}
+
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ===================== ICONS ===================== */
+const ICONS = {
+  Zap:'<path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/>',
+  Ghost:'<path d="M9 10h.01M15 10h.01M5 21V11a7 7 0 0114 0v10l-2-2-2 2-2-2-2 2-2-2-2 2z"/>',
+  Car:'<path d="M5 17h14M6 17a2 2 0 100 4 2 2 0 000-4zm12 0a2 2 0 100 4 2 2 0 000-4zM3 17V9l2-5h14l2 5v8H3z"/>',
+  Shield:'<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/>',
+  Feather:'<path d="M20.24 12.24a6 6 0 00-8.49-8.49L5 10.5V19h8.5l6.74-6.76zM16 8L2 22M17.5 15H9"/>',
+  Bike:'<path d="M5 19a3 3 0 100-6 3 3 0 000 6zm14 0a3 3 0 100-6 3 3 0 000 6zM5 16l4-7h5l3 7M9 9h6"/>',
+  PawPrint:'<path d="M11 16c1.5 0 3 1 3 3s-1.5 3-3 3-3-1-3-3 1.5-3 3-3zM4.5 9a2 2 0 100-4 2 2 0 000 4zm4-3a2 2 0 100-4 2 2 0 000 4zm5.5 0a2 2 0 100-4 2 2 0 000 4zm4 3a2 2 0 100-4 2 2 0 000 4z"/>',
+  Store:'<path d="M3 9l1-5h16l1 5M3 9v11h18V9M3 9h18M9 20v-6h6v6"/>',
+  Music:'<path d="M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z"/>',
+  Swords:'<path d="M14 4l6 6-9 9-3-3 9-9zM4 20l4-1 1-4M17 3l4 1-1 4"/>',
+  Trophy:'<path d="M8 21h8M12 17v4M17 4H7v6a5 5 0 0010 0V4z"/><path d="M5 4H3v2a4 4 0 004 4M19 4h2v2a4 4 0 01-4 4"/>',
+  Crosshair:'<circle cx="12" cy="12" r="9"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
+  Download:'<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/>',
+  Check:'<path d="M20 6L9 17l-5-5"/>',
+  Plus:'<path d="M12 5v14M5 12h14"/>',
+  Trash:'<path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6h16z"/>',
+  Search:'<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+  Cart:'<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>',
+  Home:'<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M9 22V12h6v10"/>',
+  Bookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/>',
+  LifeBuoy:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M4.9 4.9l4.2 4.2M14.9 14.9l4.2 4.2M14.9 9.1l4.2-4.2M4.9 19.1l4.2-4.2"/>',
+  Share2:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>',
+  LogOut:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
+  User:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+  Lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>',
+  Phone:'<path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1.9.3 1.8.6 2.7a2 2 0 01-.4 2.1L8.1 9.7a16 16 0 006.2 6.2l1.2-1.2a2 2 0 012.1-.4c.9.3 1.8.5 2.7.6a2 2 0 011.7 2z"/>',
+  Flag:'<path d="M4 22V4M4 4h13l-2 4 2 4H4"/>',
+  Upload:'<path d="M12 21V9m0 0l-4 4m4-4l4 4"/><path d="M4 21h16"/>',
+  Edit:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>',
+  MessageCircle:'<path d="M21 11.5a8.38 8.38 0 01-8.5 8.4H12a8.5 8.5 0 01-4-1L3 21l1.5-4.5A8.4 8.4 0 013 12.5 8.5 8.5 0 0111.5 4h.5a8.4 8.4 0 018 7z"/>',
+  Heart:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.6l-1-1a5.5 5.5 0 00-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 000-7.8z"/>',
+  Instagram:'<rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1"/>',
+  Facebook:'<path d="M15 8h3V4h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V9a1 1 0 011-1z"/>',
+  X:'<path d="M4 4l16 16M20 4L4 20"/>',
+  Gamepad:'<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/>'
+};
+function icon(name,size=18,color="currentColor",cls=""){
+  return `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`;
+}
+
+/* ===================== DATA ===================== */
+const CATEGORIES = ["Action","Sport","Adventure","FPS Shooter","Simulator/Car","Kutisha","Mkakati","Michezo Kasi","Uigaji","Muziki","Mapigano"];
+
+let games = [
+  {id:1,title:"Vita vya Anga",desc:"Vita vya ndege angani dhidi ya maadui.",category:"Action",platform:"PC",price:12000,icon:"Zap",grad:"linear-gradient(135deg,#5B3CC4,#241755)",image:null,trending:true},
+  {id:2,title:"Msitu wa Giza",desc:"Nusura kwenye msitu wenye vitisho vya usiku.",category:"Kutisha",platform:"PC",price:10000,icon:"Ghost",grad:"linear-gradient(135deg,#3B1E44,#120910)",image:null,trending:false},
+  {id:3,title:"Rally Tanzania",desc:"Mbio za magari kwenye barabara za vumbi.",category:"Simulator/Car",platform:"PC",price:0,icon:"Car",grad:"linear-gradient(135deg,#F2B705,#8C6404)",image:null,trending:true},
+  {id:4,title:"Ngome ya Mfalme",desc:"Jenga na tetea ufalme wako wa kale.",category:"Mkakati",platform:"PC",price:18000,icon:"Shield",grad:"linear-gradient(135deg,#35D0BA,#146258)",image:null,trending:true},
+  {id:5,title:"Kuku Jump",desc:"Ruka ruka kuepuka vikwazo, game rahisi na ya kufurahisha.",category:"Michezo Kasi",platform:"Android",price:0,icon:"Feather",grad:"linear-gradient(135deg,#E8944F,#7A3E14)",image:null,trending:false},
+  {id:6,title:"Bodaboda Rush",desc:"Pitiliza magari mengine kwa bodaboda mtaani.",category:"Simulator/Car",platform:"Android",price:5000,icon:"Bike",grad:"linear-gradient(135deg,#E85D5D,#6B1F1F)",image:null,trending:false},
+  {id:7,title:"Simba Quest",desc:"Safari ya kupitia savana kutafuta hazina.",category:"Adventure",platform:"Android",price:0,icon:"PawPrint",grad:"linear-gradient(135deg,#C9930A,#4A3405)",image:null,trending:true},
+  {id:8,title:"Duka Tycoon",desc:"Jenga na simamia biashara yako mwenyewe.",category:"Uigaji",platform:"Android",price:7000,icon:"Store",grad:"linear-gradient(135deg,#6C5CE7,#2A1F66)",image:null,trending:true},
+  {id:9,title:"Ngoma Beats",desc:"Cheza kwa mdundo wa muziki wa asili.",category:"Muziki",platform:"Android",price:0,icon:"Music",grad:"linear-gradient(135deg,#35D0BA,#0F4A41)",image:null,trending:false},
+  {id:10,title:"Vita vya Mtaa",desc:"Mapigano ya mtaani, mchezaji mmoja dhidi ya mwingine.",category:"Mapigano",platform:"Android",price:9000,icon:"Swords",grad:"linear-gradient(135deg,#8C2F2F,#2C0E0E)",image:null,trending:false},
+  {id:11,title:"Ligi Bingwa",desc:"Unda timu yako na shinda ligi kubwa.",category:"Sport",platform:"PC",price:6000,icon:"Trophy",grad:"linear-gradient(135deg,#2E9E5B,#0F3D22)",image:null,trending:true},
+  {id:12,title:"Operesheni Kimya",desc:"Misheni za kivita za siri, mchezaji mmoja.",category:"FPS Shooter",platform:"PC",price:15000,icon:"Crosshair",grad:"linear-gradient(135deg,#4A5568,#1A202C)",image:null,trending:false},
+];
+let nextGameId = 13;
+
+const ADMIN = {username:"maher", password:"2008"};
+let users = []; // {username, phone, country, password}
+let currentUser = null;
+let isAdmin = false;
+
+let view = "auth"; // auth | home | library | help | social | admin-login | admin
+let authTab = "login";
+let authError = "";
+
+let searchQuery = "";
+let activeCategory = "Zote";
+let favorites = {}; // username -> [gameId]
+
+let cart = [];
+let cartOpen = false;
+let checkoutStep = "cart";
+let phoneVal = "";
+let orderNo = "";
+let downloading = {};
+
+let slideIndex = 0;
+let slideTimer = null;
+
+let adminTab = "add";
+let editingGameId = null;
+let pendingImage = null; // base64 for game image
+let pendingEmuImage = null; // base64 for emulator image
+
+/* ===================== HELPERS ===================== */
+function money(n){ return n===0 ? "BURE" : "TSh "+n.toLocaleString("en-US"); }
+function showToast(msg){
+  const t=document.getElementById("toast");
+  if(!t)return;
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t=setTimeout(()=>t.classList.remove("show"),2200);
+}
+function coverStyle(g){
+  return g.image ? `background-image:url(${g.image})` : `background:${g.grad}`;
+}
+function myFavs(){ return currentUser ? (favorites[currentUser.username]||[]) : []; }
+function toggleFav(id){
+  if(!currentUser) return;
+  const list = favorites[currentUser.username] || [];
+  const idx = list.indexOf(id);
+  if(idx>-1) list.splice(idx,1); else list.push(id);
+  favorites[currentUser.username] = list;
+}
+
+/* ===================== ROOT RENDER ===================== */
+function render(){
+  const app = document.getElementById("app");
+  if(view==="auth"){ app.innerHTML = authTemplate(); bindAuth(); return; }
+  if(view==="admin-login"){ app.innerHTML = adminLoginTemplate(); bindAdminLogin(); return; }
+  if(view==="admin"){ app.innerHTML = adminTemplate(); bindAdmin(); return; }
+  app.innerHTML = shellTemplate();
+  bindShell();
+  renderViewContent();
+  renderCartDrawer();
+}
+
+/* ===================== AUTH ===================== */
+function authTemplate(){
+  return `
+  <div class="authScreen">
+    <div class="authBox">
+      <div class="authLogo">${icon("Gamepad",26,"#F2B705")}<span class="pixel" style="font-size:14px;">MCHEZO<span style="color:var(--gold)">.</span></span></div>
+      <div class="authTabs">
+        <button class="authTab ${authTab==='login'?'active':''}" data-tab="login">Ingia</button>
+        <button class="authTab ${authTab==='signup'?'active':''}" data-tab="signup">Jisajili</button>
+      </div>
+      ${authError?`<div class="authError">${authError}</div>`:""}
+      ${authTab==='login' ? `
+        <div class="field"><label>Jina la mtumiaji</label><div class="inputRow">${icon("User",16,"var(--muted)")}<input id="loginUser" placeholder="jina lako"></div></div>
+        <div class="field"><label>Password</label><div class="inputRow">${icon("Lock",16,"var(--muted)")}<input id="loginPass" type="password" placeholder="••••••••"></div></div>
+        <button class="authBtn" id="loginBtn">Ingia</button>
+      ` : `
+        <div class="field"><label>Jina la mtumiaji</label><div class="inputRow">${icon("User",16,"var(--muted)")}<input id="suUser" placeholder="jina lako"></div></div>
+        <div class="field"><label>Namba ya simu</label><div class="inputRow">${icon("Phone",16,"var(--muted)")}<input id="suPhone" placeholder="07xx xxx xxx"></div></div>
+        <div class="field"><label>Taifa</label><div class="inputRow">${icon("Flag",16,"var(--muted)")}<input id="suCountry" placeholder="mfano: Tanzania"></div></div>
+        <div class="field"><label>Password</label><div class="inputRow">${icon("Lock",16,"var(--muted)")}<input id="suPass" type="password" placeholder="••••••••"></div></div>
+        <button class="authBtn" id="signupBtn">Jiunge</button>
+      `}
+      <div class="authNote">Hii ni toleo la mfano (demo) — taarifa zinahifadhiwa kwa muda tu wa kikao hiki na hazitumwi popote nje ya kifaa chako.</div>
+      <button class="adminLink" id="goAdminLogin">Admin Login</button>
+    </div>
+  </div>`;
+}
+function bindAuth(){
+  document.querySelectorAll(".authTab").forEach(b=>b.addEventListener("click",()=>{authTab=b.dataset.tab;authError="";render();}));
+  document.getElementById("goAdminLogin").addEventListener("click",()=>{view="admin-login";render();});
+  const loginBtn=document.getElementById("loginBtn");
+  if(loginBtn) loginBtn.addEventListener("click",()=>{
+    const u=document.getElementById("loginUser").value.trim();
+    const p=document.getElementById("loginPass").value;
+    const found=users.find(x=>x.username===u && x.password===p);
+    if(!found){authError = users.find(x=>x.username===u) ? "Password si sahihi." : "Akaunti haipo, tafadhali jisajili."; render(); return;}
+    currentUser=found; authError=""; view="home"; render();
+  });
+  const signupBtn=document.getElementById("signupBtn");
+  if(signupBtn) signupBtn.addEventListener("click",()=>{
+    const u=document.getElementById("suUser").value.trim();
+    const phone=document.getElementById("suPhone").value.trim();
+    const country=document.getElementById("suCountry").value.trim();
+    const p=document.getElementById("suPass").value;
+    if(!u||!phone||!country||!p){authError="Jaza taarifa zote.";render();return;}
+    if(users.find(x=>x.username===u)){authError="Jina hili tayari linatumika.";render();return;}
+    const nu={username:u,phone,country,password:p,joinedAt:new Date().toISOString()};
+    users.push(nu);
+    if(window.MAHER){const z=MAHER.get();z.users=users;MAHER.save(z);}
+    currentUser=nu; authError=""; view="home"; render();
+  });
+}
+
+/* ===================== SHELL (home/library/help/social) ===================== */
+function shellTemplate(){
+  return `
+  <header>
+    <div class="headerRow">
+      <div class="logo pixel">${icon("Gamepad",22,"#F2B705")}MCHEZO<span style="color:var(--gold)">.</span></div>
+      <div class="headerRight">
+        <span class="userChip">${icon("User",13,"var(--muted)")}${currentUser?currentUser.username:""}</span>
+        <button class="iconBtn" id="cartOpenBtn">${icon("Cart",17)}<span class="badge" id="cartCount" style="display:${cart.length?'flex':'none'}">${cart.length}</span></button>
+        <button class="iconBtn" id="logoutBtn">${icon("LogOut",17)}</button>
+      </div>
+    </div>
+  </header>
+  <div id="viewContent"></div>
+  <div class="bottomNav">
+    <button class="navBtn ${view==='home'?'active':''}" data-nav="home">${icon("Home",19)}<span>Home</span></button>
+    <button class="navBtn ${view==='library'?'active':''}" data-nav="library">${icon("Bookmark",19)}<span>Library</span></button>
+    <button class="navBtn ${view==='help'?'active':''}" data-nav="help">${icon("LifeBuoy",19)}<span>Help</span></button>
+    <button class="navBtn ${view==='social'?'active':''}" data-nav="social">${icon("Share2",19)}<span>Social</span></button>
+  </div>
+  <div class="overlay" id="overlay"></div>
+  <div class="drawer" id="drawer">
+    <div class="drawerHead"><span class="pixel" style="font-size:12px;">KIKAPU</span><button class="closeBtn" id="closeDrawerBtn">${icon("X",20)}</button></div>
+    <div id="cartPane"></div>
+  </div>
+  <div class="toast" id="toast"></div>`;
+}
+function bindShell(){
+  document.getElementById("cartOpenBtn").addEventListener("click",openDrawer);
+  document.getElementById("closeDrawerBtn").addEventListener("click",closeDrawer);
+  document.getElementById("overlay").addEventListener("click",closeDrawer);
+  document.getElementById("logoutBtn").addEventListener("click",()=>{currentUser=null;cart=[];view="auth";authTab="login";render();});
+  document.querySelectorAll(".navBtn").forEach(b=>b.addEventListener("click",()=>{view=b.dataset.nav;render();}));
+}
+function renderViewContent(){
+  const el=document.getElementById("viewContent");
+  if(view==="home"){ el.innerHTML=homeTemplate(); bindHome(); startSlideshow(); }
+  else if(view==="library"){ el.innerHTML=libraryTemplate(); bindLibrary(); }
+  else if(view==="help"){ el.innerHTML=helpTemplate(); }
+  else if(view==="social"){ el.innerHTML=socialTemplate(); }
+}
+
+/* ===================== HOME ===================== */
+function trendingGames(){ return games.filter(g=>g.trending).slice(0,6); }
+
+function homeTemplate(){
+  return `
+    <div class="slideshow" id="slideshow">
+      ${trendingGames().map((g,i)=>`
+        <div class="slide ${i===0?'active':''}" style="${coverStyle(g)};background-size:cover;">
+          <div class="slideCat mono">TRENDING · ${g.category.toUpperCase()}</div>
+          <div class="slideTitle pixel" style="font-size:16px;">${g.title}</div>
+          <div class="slidePrice mono">${money(g.price)}</div>
+        </div>`).join("")}
+      <div class="slideDots">${trendingGames().map((_,i)=>`<div class="dot ${i===0?'active':''}"></div>`).join("")}</div>
+    </div>
+    <div class="wrap">
+      <div class="searchBox"><span style="display:flex;">${icon("Search",18,"var(--muted)")}</span><input id="searchInput" placeholder="Tafuta game..." value="${searchQuery}"></div>
+
+      <div class="sectionTitle">Categories</div>
+      <div class="chipsRow" id="chipsRow"></div>
+
+      <div class="sectionTitle">Games za Bure</div>
+      <div class="hScroll" id="freeRow"></div>
+
+      <div class="sectionTitle">Games Zinazouzwa</div>
+      <div class="hScroll" id="paidRow"></div>
+
+      <div class="sectionTitle">Games Zote</div>
+      <div class="hScroll" id="allRow"></div>
+    </div>`;
+}
+function bindHome(){
+  document.getElementById("searchInput").addEventListener("input",e=>{searchQuery=e.target.value;renderGameRows();});
+  renderChips();
+  renderGameRows();
+}
+function renderChips(){
+  const row=document.getElementById("chipsRow");
+  const cats=["Zote",...CATEGORIES];
+  row.innerHTML=cats.map(c=>`<button class="chip ${activeCategory===c?'active':''}" data-cat="${c}">${c}</button>`).join("");
+  row.querySelectorAll(".chip").forEach(b=>b.addEventListener("click",()=>{activeCategory=b.dataset.cat;renderChips();renderGameRows();}));
+}
+function gameCardHtml(g){
+  const fav = myFavs().includes(g.id);
+  const inCart = cart.some(i=>i.id===g.id);
+  const dl = downloading[g.id];
+  let action;
+  if(g.price===0){
+    if(dl==="imekamilika") action=`<button class="actionBtn btnGhostTeal" disabled>${icon("Check",13)}Tayari</button>`;
+    else if(dl==="inapakua") action=`<button class="actionBtn btnTeal" disabled>Inapakua...</button>`;
+    else action=`<button class="actionBtn btnTeal" data-dl="${g.id}">${icon("Download",13)}Pakua</button>`;
+  } else {
+    action = inCart ? `<button class="actionBtn btnGhostGold" disabled>${icon("Check",13)}Ipo</button>`
+      : `<button class="actionBtn btnGold" data-add="${g.id}">${icon("Plus",13)}Ongeza</button>`;
+  }
+  return `
+    <div class="card">
+      <button class="favBtn ${fav?'active':''}" data-fav="${g.id}">${icon("Heart",16,fav?"var(--gold)":"#fff")}</button>
+      <div class="notch l"></div><div class="notch r"></div>
+      <div class="cover" style="${coverStyle(g)}">${g.image?'':icon(g.icon,34,"#fff")}</div>
+      <div class="cardBody">
+        <div class="cardMeta"><span>${g.category.toUpperCase()}</span><span>${g.platform}</span></div>
+        <h3 class="cardTitle">${g.title}</h3>
+        <p class="cardDesc">${g.desc}</p>
+        <div class="cardFoot"><span class="price mono ${g.price===0?'free':'paid'}">${money(g.price)}</span>${action}</div>
+      </div>
+    </div>`;
+}
+function filteredGames(){
+  return games.filter(g=>
+    (activeCategory==="Zote"||g.category===activeCategory) &&
+    g.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+}
+function renderGameRows(){
+  const list=filteredGames();
+  document.getElementById("freeRow").innerHTML = renderRow(list.filter(g=>g.price===0));
+  document.getElementById("paidRow").innerHTML = renderRow(list.filter(g=>g.price>0));
+  document.getElementById("allRow").innerHTML = renderRow(list);
+  bindCardEvents();
+}
+function renderRow(list){
+  if(!list.length) return `<div class="emptyMsg">Hakuna games hapa kwa sasa.</div>`;
+  return list.map(gameCardHtml).join("");
+}
+function bindCardEvents(){
+  document.querySelectorAll("[data-add]").forEach(b=>b.addEventListener("click",()=>{
+    const g=games.find(x=>x.id===Number(b.dataset.add));
+    if(cart.some(i=>i.id===g.id)){showToast(`${g.title} tayari ipo kwenye kikapu`);return;}
+    cart.push(g); showToast(`${g.title} imeongezwa kwenye kikapu`);
+    renderGameRows(); updateCartCount();
+  }));
+  document.querySelectorAll("[data-dl]").forEach(b=>b.addEventListener("click",()=>{
+    const g=games.find(x=>x.id===Number(b.dataset.dl));
+    downloading[g.id]="inapakua"; renderGameRows();
+    setTimeout(()=>{downloading[g.id]="imekamilika";if(window.maherRecordDownload)maherRecordDownload(g);showToast(`${g.title} imepakuliwa!`);renderGameRows();},1400);
+  }));
+  document.querySelectorAll("[data-fav]").forEach(b=>b.addEventListener("click",()=>{
+    if(!currentUser){showToast("Ingia kwanza kutumia Library");return;}
+    toggleFav(Number(b.dataset.fav)); if(window.maherRecordFavorite)maherRecordFavorite(Number(b.dataset.fav),myFavs().includes(Number(b.dataset.fav))); renderGameRows();
+    if(view==="library") renderViewContent();
+  }));
+}
+function startSlideshow(){
+  clearInterval(slideTimer);
+  const slides=document.querySelectorAll("#slideshow .slide");
+  const dots=document.querySelectorAll("#slideshow .dot");
+  if(!slides.length) return;
+  slideIndex=0;
+  slideTimer=setInterval(()=>{
+    slides[slideIndex].classList.remove("active"); dots[slideIndex].classList.remove("active");
+    slideIndex=(slideIndex+1)%slides.length;
+    slides[slideIndex].classList.add("active"); dots[slideIndex].classList.add("active");
+  },2500);
+  const box=document.getElementById("slideshow");
+  box.addEventListener("mouseenter",()=>clearInterval(slideTimer));
+  box.addEventListener("mouseleave",startSlideshow);
+}
+
+/* ===================== LIBRARY ===================== */
+function libraryTemplate(){
+  const favs = games.filter(g=>myFavs().includes(g.id));
+  return `
+    <div class="pageHead"><h2>Library Yako</h2><p>Games ulizoziweka alama — bila kuzipakua.</p></div>
+    <div class="libGrid">${favs.length? favs.map(gameCardHtml).join("") : `<div class="emptyMsg">Bado huna game yoyote kwenye Library. Bofya ${icon("Heart",13,"var(--gold)")} kwenye kadi ya game kuiongeza.</div>`}</div>`;
+}
+function bindLibrary(){ bindCardEvents(); }
+
+/* ===================== HELP ===================== */
+function helpTemplate(){const z=window.MAHER?MAHER.get():{settings:{help:[]}};const hs=z.settings.help||[];return `<div class="pageHead"><h2>Msaada</h2><p>Wasiliana nasi moja kwa moja.</p></div>${hs.map(h=>`<div class="helpCard"><div class="waIcon">${icon('MessageCircle',22,'var(--teal)')}</div><div class="txt"><div>${h.label||'Msaada'}</div><div>${h.number||''}</div></div><a class="waBtn" href="${h.whatsapp?'https://wa.me/'+String(h.number).replace(/\D/g,''):'tel:'+h.number}">${h.whatsapp?'WhatsApp':'Piga Simu'}</a></div>`).join('')||'<div class="adCard">Namba za msaada zitawekwa na admin.</div>'}`;}
+
+/* ===================== SOCIAL ===================== */
+function socialTemplate(){const z=window.MAHER?MAHER.get():{settings:{social:{},ads:[]}};const so=z.settings.social||{},ads=z.settings.ads||[];const links=[['TikTok',so.tiktok],['WhatsApp Group',so.whatsapp],['Instagram',so.instagram],['Facebook',so.facebook],['YouTube',so.youtube]].filter(x=>x[1]);return `<div class="pageHead"><h2>Mitandao ya Kijamii</h2><p>Jiunge na Maher Game Store.</p></div><div class="socialGrid">${links.map(x=>`<a class="socialIcon" href="${x[1]}" target="_blank">${x[0]}</a>`).join('')||'<div class="adCard">Admin hajaweka links za mitandao ya kijamii bado.</div>'}</div><div class="sectionTitle wrap">Matangazo</div>${ads.map(a=>`<div class="adCard">${a.image?`<img src="${a.image}" style="width:100%;border-radius:10px;margin-bottom:10px;">`:''}<b>${a.title||''}</b><div>${a.text||''}</div>${a.link?`<a class="waBtn" style="display:inline-block;margin-top:10px;" href="${a.link}" target="_blank">Fungua Tangazo</a>`:''}</div>`).join('')||'<div class="adCard">Hakuna matangazo kwa sasa.</div>'}`;}
+
+/* ===================== CART DRAWER ===================== */
+const overlay=()=>document.getElementById("overlay");
+const drawer=()=>document.getElementById("drawer");
+function openDrawer(){overlay().classList.add("show");drawer().classList.add("show");renderCartDrawer();}
+function closeDrawer(){overlay().classList.remove("show");drawer().classList.remove("show");setTimeout(()=>{checkoutStep="cart";phoneVal="";},300);}
+function updateCartCount(){
+  const el=document.getElementById("cartCount");
+  if(!el) return;
+  el.textContent=cart.length; el.style.display=cart.length?"flex":"none";
+}
+function renderCartDrawer(){
+  const pane=document.getElementById("cartPane");
+  if(!pane) return;
+  const total=cart.reduce((s,i)=>s+i.price,0);
+  if(checkoutStep==="cart"){
+    pane.innerHTML=`
+      <div class="cartList">
+        ${cart.length===0?`<p class="emptyMsg">Kikapu chako kipo tupu.</p>`:cart.map(item=>`
+          <div class="cartItem">
+            <div class="cartThumb" style="${coverStyle(item)}"></div>
+            <div class="cartInfo"><div class="t">${item.title}</div><div class="p mono">${money(item.price)}</div></div>
+            <button class="rmBtn" data-rm="${item.id}">${icon("Trash",16)}</button>
+          </div>`).join("")}
+      </div>
+      ${cart.length>0?`<div class="cartFoot"><div class="row"><span style="color:var(--muted);font-size:14px;">Jumla</span><span class="mono" style="font-weight:700;color:var(--gold);">${money(total)}</span></div><button class="fullBtn" id="payBtn">Lipa kwa M-Pesa</button></div>`:""}`;
+    pane.querySelectorAll("[data-rm]").forEach(b=>b.addEventListener("click",()=>{cart=cart.filter(i=>i.id!==Number(b.dataset.rm));renderCartDrawer();renderGameRows&&document.getElementById("freeRow")&&renderGameRows();updateCartCount();}));
+    const payBtn=document.getElementById("payBtn");
+    if(payBtn) payBtn.addEventListener("click",()=>{checkoutStep="pay";renderCartDrawer();});
+  } else if(checkoutStep==="pay"){
+    pane.innerHTML=`
+      <div class="payPane">
+        <p style="font-size:14px;color:var(--muted);">Weka namba yako ya M-Pesa kuthibitisha malipo ya <span class="mono" style="color:var(--gold);">${money(total)}</span>.</p>
+        <input id="phoneInput" class="mono" placeholder="07xx xxx xxx" value="${phoneVal}">
+        <button class="fullBtn" id="confirmPayBtn">Thibitisha Malipo</button>
+        <button class="backBtn" id="backBtn">Rudi nyuma</button>
+      </div>`;
+    document.getElementById("phoneInput").addEventListener("input",e=>phoneVal=e.target.value);
+    document.getElementById("confirmPayBtn").addEventListener("click",()=>{
+      if(phoneVal.trim().length<9){showToast("Weka namba sahihi ya simu");return;}
+      orderNo="MCH-"+Math.floor(100000+Math.random()*900000);
+      checkoutStep="done"; renderCartDrawer();
+    });
+    document.getElementById("backBtn").addEventListener("click",()=>{checkoutStep="cart";renderCartDrawer();});
+  } else if(checkoutStep==="done"){
+    pane.innerHTML=`
+      <div class="donePane">
+        <div class="doneIcon">${icon("Check",28,"var(--teal)")}</div>
+        <h3 style="font-size:17px;font-weight:700;">Malipo Yamefanikiwa</h3>
+        <p style="color:var(--muted);font-size:14px;">Namba ya oda: <span class="mono" style="color:var(--gold);">${orderNo}</span></p>
+        <p style="color:var(--muted);font-size:13px;">Link za kupakua zimetumwa kwa simu ${phoneVal}.</p>
+        <button class="fullBtn" style="width:auto;padding:12px 24px;" id="doneBtn">Sawa, Funga</button>
+      </div>`;
+    document.getElementById("doneBtn").addEventListener("click",()=>{cart=[];updateCartCount();closeDrawer();});
+  }
+}
+
+/* ===================== ADMIN LOGIN ===================== */
+function adminLoginTemplate(){
+  return `
+  <div class="authScreen">
+    <div class="authBox">
+      <div class="authLogo">${icon("Lock",24,"#F2B705")}<span class="pixel" style="font-size:13px;">ADMIN</span></div>
+      ${authError?`<div class="authError">${authError}</div>`:""}
+      <div class="field"><label>Username</label><div class="inputRow">${icon("User",16,"var(--muted)")}<input id="aUser" placeholder="admin"></div></div>
+      <div class="field"><label>Password</label><div class="inputRow">${icon("Lock",16,"var(--muted)")}<input id="aPass" type="password" placeholder="••••••••"></div></div>
+      <button class="authBtn" id="aLoginBtn">Ingia kama Admin</button>
+      <div class="authNote">Kwa majaribio (demo): admin / admin123</div>
+      <button class="adminLink" id="backToUser">← Rudi kwenye Login ya Mtumiaji</button>
+    </div>
+  </div>`;
+}
+function bindAdminLogin(){
+  document.getElementById("backToUser").addEventListener("click",()=>{authError="";view="auth";render();});
+  document.getElementById("aLoginBtn").addEventListener("click",()=>{
+    const u=document.getElementById("aUser").value.trim();
+    const p=document.getElementById("aPass").value;
+    if(u===ADMIN.username && p===ADMIN.password){isAdmin=true;authError="";view="admin";render();}
+    else{authError="Taarifa si sahihi.";render();}
+  });
+}
+
+/* ===================== ADMIN DASHBOARD ===================== */
+function adminTemplate(){
+  return `
+  <header><div class="headerRow">
+    <div class="logo pixel">${icon("Lock",20,"#F2B705")}ADMIN</div>
+    <button class="iconBtn" id="adminLogout">${icon("LogOut",17)}</button>
+  </div></header>
+  <div class="adminWrap">
+    <div class="adminTabs">
+      <button class="adminTab ${adminTab==='add'?'active':''}" data-atab="add">${editingGameId?'Hariri Game':'Ongeza Game'}</button>
+      <button class="adminTab ${adminTab==='list'?'active':''}" data-atab="list">Games Zilizopo (${games.length})</button>
+      <button class="adminTab ${adminTab==='settings'?'active':''}" data-atab="settings">Mipangilio</button>
+    </div>
+    <div id="adminContent"></div>
+  </div>
+  <div class="toast" id="toast"></div>`;
+}
+function bindAdmin(){
+  document.getElementById("adminLogout").addEventListener("click",()=>{isAdmin=false;editingGameId=null;pendingImage=null;pendingEmuImage=null;view="auth";authTab="login";render();});
+  document.querySelectorAll("[data-atab]").forEach(b=>b.addEventListener("click",()=>{adminTab=b.dataset.atab;if(adminTab==="list"){editingGameId=null;pendingImage=null;pendingEmuImage=null;}renderAdminContent();}));
+  renderAdminContent();
+}
+function renderAdminContent(){
+  const el=document.getElementById("adminContent");
+  if(adminTab==="add"){ el.innerHTML=adminFormTemplate(); bindAdminForm(); }
+  else if(adminTab==="settings"){ el.innerHTML=adminSettingsTemplate(); bindAdminSettings(); }
+  else{ el.innerHTML=adminListTemplate(); bindAdminList(); }
+}
+function adminSettingsTemplate(){
+  const z=window.MAHER?MAHER.get():{settings:{payments:[],help:[],ads:[],social:{}}};
+  const st=z.settings||{}, payments=st.payments||[], help=st.help||[], ads=st.ads||[], so=st.social||{};
+  return `<div class="settingsPanel">
+    <div class="settingsCard">
+      <h3>📞 Namba za Msaada</h3><p>Weka namba ambazo zitaonekana kwenye sehemu ya Help/Msaada.</p>
+      <div id="helpRows" class="settingsRows">${help.map((h,i)=>`<div class="settingsRow"><div><label>Jina</label><input data-help-label="${i}" value="${h.label||''}" placeholder="Msaada / WhatsApp"></div><div><label>Namba</label><input data-help-number="${i}" value="${h.number||''}" placeholder="07XXXXXXXX"></div><button class="rowBtn danger" data-help-del="${i}">✕</button></div>`).join('')}</div>
+      <div class="settingsActions"><button class="adminTab" id="addHelp">+ Ongeza namba ya msaada</button></div>
+    </div>
+    <div class="settingsCard">
+      <h3>💳 Namba za Malipo</h3><p>Weka namba za Vodacom, Mixx by Yas, Airtel, Halotel, Tigo au mtandao mwingine.</p>
+      <div id="paymentRows" class="settingsRows">${payments.map((x,i)=>`<div class="settingsRow"><div><label>Mtandao</label><input data-pay-network="${i}" value="${x.network||''}" placeholder="Vodacom / Yas / Airtel"></div><div><label>Namba ya Malipo</label><input data-pay-number="${i}" value="${x.number||''}" placeholder="07XXXXXXXX"></div><button class="rowBtn danger" data-pay-del="${i}">✕</button></div>`).join('')}</div>
+      <div class="settingsActions"><button class="adminTab" id="addPayment">+ Ongeza namba ya malipo</button></div>
+    </div>
+    <div class="settingsCard">
+      <h3>🌐 Mitandao ya Kijamii</h3><p>Weka links zitakazofunguka mtu akibonyeza Social.</p>
+      <div class="formGrid" style="padding:0;background:none;border:0;">
+        <div><label>TikTok</label><input id="sTikTok" value="${so.tiktok||''}" placeholder="https://www.tiktok.com/@..."></div>
+        <div><label>WhatsApp Group</label><input id="sWhatsApp" value="${so.whatsapp||''}" placeholder="https://chat.whatsapp.com/..."></div>
+        <div><label>Instagram</label><input id="sInstagram" value="${so.instagram||''}" placeholder="https://instagram.com/..."></div>
+        <div><label>Facebook</label><input id="sFacebook" value="${so.facebook||''}" placeholder="https://facebook.com/..."></div>
+        <div class="full"><label>YouTube</label><input id="sYouTube" value="${so.youtube||''}" placeholder="https://youtube.com/@..."></div>
+      </div>
+    </div>
+    <div class="settingsCard">
+      <h3>📢 Matangazo</h3><p>Ongeza tangazo lenye kichwa, maelezo, picha na link. Tangazo litaonekana kwenye sehemu ya Social.</p>
+      <div id="adRows" class="settingsRows">${ads.map((a,i)=>`<div class="settingsRow" style="grid-template-columns:1fr 1fr auto;"><div><label>Kichwa</label><input data-ad-title="${i}" value="${a.title||''}" placeholder="Tangazo jipya"></div><div><label>Link</label><input data-ad-link="${i}" value="${a.link||''}" placeholder="https://..."></div><button class="rowBtn danger" data-ad-del="${i}">✕</button><div style="grid-column:1/-1"><label>Maelezo</label><textarea data-ad-text="${i}" placeholder="Andika ujumbe wa tangazo">${a.text||''}</textarea></div><div style="grid-column:1/-1"><label>Picha ya Tangazo (hiari)</label><input type="file" accept="image/*" data-ad-image="${i}"><div class="imgPreview" style="height:80px;${a.image?`background-image:url(${a.image})`:''}">${a.image?'':'Picha ya tangazo'}</div></div></div>`).join('')}</div>
+      <div class="settingsActions"><button class="adminTab" id="addAd">+ Ongeza tangazo</button></div>
+    </div>
+    <button class="fullBtn" id="saveSettingsBtn">Hifadhi Mipangilio Yote</button>
+  </div>`;
+}
+function bindAdminSettings(){
+  const z=MAHER.get(); z.settings=z.settings||{}; z.settings.help=z.settings.help||[]; z.settings.payments=z.settings.payments||[]; z.settings.ads=z.settings.ads||[]; z.settings.social=z.settings.social||{};
+  document.getElementById('addHelp').onclick=()=>{z.settings.help.push({label:'Msaada',number:'',whatsapp:false});MAHER.save(z);renderAdminContent();};
+  document.getElementById('addPayment').onclick=()=>{z.settings.payments.push({network:'Vodacom',number:''});MAHER.save(z);renderAdminContent();};
+  document.getElementById('addAd').onclick=()=>{z.settings.ads.push({title:'',text:'',link:'',image:''});MAHER.save(z);renderAdminContent();};
+  document.querySelectorAll('[data-help-del]').forEach(b=>b.onclick=()=>{z.settings.help.splice(Number(b.dataset.helpDel),1);MAHER.save(z);renderAdminContent();});
+  document.querySelectorAll('[data-pay-del]').forEach(b=>b.onclick=()=>{z.settings.payments.splice(Number(b.dataset.payDel),1);MAHER.save(z);renderAdminContent();});
+  document.querySelectorAll('[data-ad-del]').forEach(b=>b.onclick=()=>{z.settings.ads.splice(Number(b.dataset.adDel),1);MAHER.save(z);renderAdminContent();});
+  document.querySelectorAll('[data-ad-image]').forEach(inp=>inp.addEventListener('change',e=>{const i=Number(inp.dataset.adImage),file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{z.settings.ads[i].image=ev.target.result;MAHER.save(z);renderAdminContent();};r.readAsDataURL(file);}));
+  document.getElementById('saveSettingsBtn').onclick=()=>{
+    document.querySelectorAll('[data-help-label]').forEach(x=>z.settings.help[Number(x.dataset.helpLabel)].label=x.value.trim());
+    document.querySelectorAll('[data-help-number]').forEach(x=>z.settings.help[Number(x.dataset.helpNumber)].number=x.value.trim());
+    document.querySelectorAll('[data-pay-network]').forEach(x=>z.settings.payments[Number(x.dataset.payNetwork)].network=x.value.trim());
+    document.querySelectorAll('[data-pay-number]').forEach(x=>z.settings.payments[Number(x.dataset.payNumber)].number=x.value.trim());
+    document.querySelectorAll('[data-ad-title]').forEach(x=>z.settings.ads[Number(x.dataset.adTitle)].title=x.value.trim());
+    document.querySelectorAll('[data-ad-link]').forEach(x=>z.settings.ads[Number(x.dataset.adLink)].link=x.value.trim());
+    document.querySelectorAll('[data-ad-text]').forEach(x=>z.settings.ads[Number(x.dataset.adText)].text=x.value.trim());
+    z.settings.social.tiktok=document.getElementById('sTikTok').value.trim(); z.settings.social.whatsapp=document.getElementById('sWhatsApp').value.trim(); z.settings.social.instagram=document.getElementById('sInstagram').value.trim(); z.settings.social.facebook=document.getElementById('sFacebook').value.trim(); z.settings.social.youtube=document.getElementById('sYouTube').value.trim();
+    MAHER.save(z); showToast('Mipangilio yote imehifadhiwa');
+  };
+}
+function adminFormTemplate(){
+  const g = editingGameId ? games.find(x=>x.id===editingGameId) : null;
+  const img = pendingImage || (g?g.image:null) || (g?null:null);
+  return `
+    <div class="formGrid">
+      <div class="full"><label>Jina la Game</label><input id="fTitle" value="${g?g.title:''}"></div>
+      <div class="full"><label>Maelezo mafupi</label><textarea id="fDesc">${g?g.desc:''}</textarea></div>
+      <div class="full"><label>Link ya Game / Download</label><input id="fLink" placeholder="https://..." value="${g&&g.link?g.link:''}"></div>
+      <div><label>Inahitaji Emulator?</label><select id="fEmu"><option value="no" ${!g||!g.emulator?'selected':''}>Hapana</option><option value="yes" ${g&&g.emulator?'selected':''}>Ndiyo</option></select></div>
+      <div><label>Jina la Emulator</label><input id="fEmuName" placeholder="PPSSPP / Vita3K / Yuzu..." value="${g&&g.emulatorName?g.emulatorName:''}"></div>
+      <div class="full imageField">
+        <label>Picha ya Emulator</label>
+        <div class="imagePicker"><input type="file" id="fEmuImage" accept="image/*"></div>
+        <div class="imgPreview emuPreview" id="emuImgPreview" style="${g&&g.emulatorImage?`background-image:url(${g.emulatorImage})`:''}">${g&&g.emulatorImage?'':icon('Upload',22,'var(--muted)')}</div>
+      </div>
+      <div class="full"><label>Link ya Emulator (hiari)</label><input id="fEmuLink" placeholder="https://..." value="${g&&g.emulatorLink?g.emulatorLink:''}"></div>
+      <div><label>Bei (TSh, weka 0 kama ni BURE)</label><input id="fPrice" type="number" value="${g?g.price:0}"></div>
+      <div><label>Platform</label><select id="fPlatform"><option ${g&&g.platform==='PC'?'selected':''}>PC</option><option ${g&&g.platform==='Android'?'selected':''}>Android</option></select></div>
+      <div><label>Category</label><select id="fCategory">${CATEGORIES.map(c=>`<option ${g&&g.category===c?'selected':''}>${c}</option>`).join("")}</select></div>
+      <div><label>Weka kwenye Trending</label><div class="checkRow" style="margin-top:10px;"><input type="checkbox" id="fTrend" ${g&&g.trending?'checked':''}> <span>Onyesha kwenye slideshow (max 6)</span></div></div>
+      <div class="full">
+        <label>Picha ya Game</label>
+        <div class="imagePicker"><input type="file" id="fImage" accept="image/*"></div>
+        <div class="imgPreview" id="imgPreview" style="${img?`background-image:url(${img})`:''}">${img?'':icon('Upload',22,'var(--muted)')}</div>
+      </div>
+      <div class="full" style="display:flex;gap:10px;">
+        <button class="fullBtn" id="saveGameBtn" style="flex:1;">${editingGameId?'Hifadhi Mabadiliko':'Hifadhi Game'}</button>
+        ${editingGameId?`<button class="fullBtn" id="cancelEditBtn" style="flex:1;background:var(--surfaceLight);color:var(--text);">Ghairi</button>`:""}
+      </div>
+    </div>`;
+}
+function bindAdminForm(){
+  const emuFileInput=document.getElementById("fEmuImage");
+  if(emuFileInput) emuFileInput.addEventListener("change",e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      pendingEmuImage=ev.target.result;
+      const prev=document.getElementById("emuImgPreview");
+      if(prev){prev.style.backgroundImage=`url(${pendingEmuImage})`;prev.innerHTML="";}
+    };
+    reader.readAsDataURL(file);
+  });
+  const fileInput=document.getElementById("fImage");
+  fileInput.addEventListener("change",e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      pendingImage=ev.target.result;
+      document.getElementById("imgPreview").style.backgroundImage=`url(${pendingImage})`;
+      document.getElementById("imgPreview").innerHTML="";
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById("saveGameBtn").addEventListener("click",()=>{
+    const title=document.getElementById("fTitle").value.trim();
+    const desc=document.getElementById("fDesc").value.trim();
+    const link=document.getElementById("fLink")?.value.trim()||"";
+    const emulator=document.getElementById("fEmu")?.value==="yes";
+    const emulatorName=document.getElementById("fEmuName")?.value.trim()||"";
+    const emulatorLink=document.getElementById("fEmuLink")?.value.trim()||"";
+    const price=Number(document.getElementById("fPrice").value)||0;
+    const platform=document.getElementById("fPlatform").value;
+    const category=document.getElementById("fCategory").value;
+    const trending=document.getElementById("fTrend").checked;
+    if(!title){showToast("Weka jina la game");return;}
+    if(trending && games.filter(g=>g.trending && g.id!==editingGameId).length>=6){
+      showToast("Umefikia kikomo cha games 6 kwenye Trending. Ondoa mojawapo kwanza.");return;
+    }
+    if(editingGameId){
+      const g=games.find(x=>x.id===editingGameId);
+      Object.assign(g,{title,desc,price,platform,category,trending,image:pendingImage||g.image,link,emulator,emulatorName,emulatorImage:pendingEmuImage!==null?pendingEmuImage:(g.emulatorImage||null),emulatorLink});
+      showToast("Mabadiliko yamehifadhiwa");
+    } else {
+      games.push({id:nextGameId++,title,desc,price,platform,category,trending,image:pendingImage,link,emulator,emulatorName,emulatorImage:pendingEmuImage,emulatorLink,icon:"Zap",grad:"linear-gradient(135deg,#5B3CC4,#241755)"});
+      showToast("Game imeongezwa");
+    }
+    editingGameId=null; pendingImage=null; adminTab="list"; renderAdminContent();
+  });
+  const cancelBtn=document.getElementById("cancelEditBtn");
+  if(cancelBtn) cancelBtn.addEventListener("click",()=>{editingGameId=null;pendingImage=null;pendingEmuImage=null;adminTab="list";renderAdminContent();});
+}
+function adminListTemplate(){
+  return `<div class="adminGamesList">${games.map(g=>`
+    <div class="adminGameRow">
+      <div class="adminThumb" style="${coverStyle(g)}"></div>
+      <div class="info"><div class="t">${g.title}</div><div class="m">${g.category} · ${g.platform} · ${money(g.price)}</div></div>
+      ${g.trending?`<span class="trendBadge">Trending</span>`:""}
+      <button class="rowBtn" data-edit="${g.id}">${icon("Edit",15)}</button>
+      <button class="rowBtn danger" data-del="${g.id}">${icon("Trash",15)}</button>
+    </div>`).join("")}</div>`;
+}
+function bindAdminList(){
+  document.querySelectorAll("[data-edit]").forEach(b=>b.addEventListener("click",()=>{
+    editingGameId=Number(b.dataset.edit); pendingImage=null; adminTab="add"; renderAdminContent();
+  }));
+  document.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{
+    const g=games.find(x=>x.id===Number(b.dataset.del));
+    if(confirm(`Una uhakika unataka kufuta "${g.title}"?`)){
+      games=games.filter(x=>x.id!==g.id);
+      const store=window.MAHER?MAHER.get():null;
+      if(store){store.games=games;MAHER.save(store);}
+      renderAdminContent();
+    }
+  }));
+}
+
+/* ===================== INIT ===================== */
+render();
+</script>
+<script>
+/* MAHER GAME STORE — shared control layer */
+(function(){
+ const KEY='maher_game_store_v3';
+ const base={users:[],games:null,downloads:[],favorites:{},visits:[],orders:[],settings:{payments:[],help:[],ads:[],social:{tiktok:'',whatsapp:''}}};
+ function get(){let x;try{x=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){x=null}if(!x)x=structuredClone(base);for(const k in base)if(x[k]===undefined)x[k]=structuredClone(base[k]);if(!x.games)x.games=window.games||[];return x}
+ function save(x){localStorage.setItem(KEY,JSON.stringify(x))}
+ window.MAHER={KEY,get,save};
+ let st=get();
+ if(!st.games || !st.games.length)st.games=window.games||[];
+ // Keep existing demo users/data while migrating to the shared store.
+ if((window.users||[]).length && !st.users.length)st.users=window.users;
+ save(st);
+ window.games=st.games; window.users=st.users;
+ // Daily unique website views per browser session.
+ const today=new Date().toISOString().slice(0,10), sid=sessionStorage.getItem('maher_sid')||Math.random().toString(36).slice(2);
+ sessionStorage.setItem('maher_sid',sid);
+ st=get(); if(!st.visits.some(v=>v.date===today&&v.sid===sid)){st.visits.push({date:today,sid,time:new Date().toISOString()});save(st)}
+ // Reload shared games whenever website is rendered.
+ const oldRender=window.render;
+ window.render=function(){const z=get();window.games=z.games||[];window.users=z.users||[];if(oldRender)oldRender()};
+ // Add registration timestamp to every new account.
+ const oldBindAuth=window.bindAuth;
+ if(oldBindAuth){
+   // Keep original UI binding, but capture newly created user through users array after action.
+   window.bindAuth=function(){oldBindAuth();};
+ }
+ // Shared helpers for admin / website.
+ window.maherSaveUser=function(u){let z=get();const i=z.users.findIndex(x=>x.username===u.username);if(i>=0)z.users[i]=u;else z.users.push(u);save(z);window.users=z.users};
+ window.maherRecordDownload=function(g){let z=get();z.downloads.push({gameId:g.id,username:window.currentUser?.username||'guest',free:g.price===0,date:new Date().toISOString()});save(z)};
+ window.maherRecordFavorite=function(id,active){let z=get(),u=window.currentUser?.username||'guest';z.favorites[u]=z.favorites[u]||[];const a=z.favorites[u],i=a.indexOf(id);if(active&&i<0)a.push(id);if(!active&&i>=0)a.splice(i,1);save(z)};
+})();
+</script>
+<script>
+/* Maher checkout/payment + admin-controlled content */
+(function(){
+ function st(){return MAHER.get()}; function sv(x){MAHER.save(x)}
+ window.renderCartDrawer=function(){
+  const pane=document.getElementById('cartPane'); if(!pane)return; const z=st(), total=cart.reduce((a,g)=>a+Number(g.price||0),0);
+  if(checkoutStep==='cart'){
+   pane.innerHTML=`<div class="cartList">${cart.length?cart.map(g=>`<div class="cartItem"><div class="cartThumb" style="${coverStyle(g)}"></div><div class="cartInfo"><div class="t">${g.title}</div><div class="p mono">${money(g.price)}</div></div><button class="rmBtn" data-rm="${g.id}">${icon('Trash',16)}</button></div>`).join(''):'<p class="emptyMsg">Kikapu chako kipo tupu.</p>'}</div>${cart.length?`<div class="cartFoot"><div class="row"><span style="color:var(--muted);font-size:14px">Jumla</span><span class="mono" style="font-weight:700;color:var(--gold)">${money(total)}</span></div><button class="fullBtn" id="payBtn">Lipa na Pakua</button></div>`:''}`;
+   pane.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{cart=cart.filter(g=>g.id!==Number(b.dataset.rm));renderCartDrawer();updateCartCount()});
+   document.getElementById('payBtn')?.addEventListener('click',()=>{checkoutStep='pay';renderCartDrawer()});
+  } else if(checkoutStep==='pay'){
+   const ps=z.settings.payments||[];
+   pane.innerHTML=`<div class="payPane"><p style="color:var(--muted);font-size:13px">Lipa <b style="color:var(--gold)">${money(total)}</b> kupitia namba hizi:</p>${ps.length?ps.map(p=>`<div style="padding:10px;background:var(--surfaceLight);border:1px solid var(--border);border-radius:10px;margin:7px 0"><b>${p.network}</b><div class="mono" style="color:var(--gold);margin-top:4px">${p.number}</div></div>`).join(''):'<div class="adCard">Admin hajaweka namba ya malipo bado.</div>'}<input id="phoneInput" class="mono" placeholder="Namba uliyotumia kulipia"><input id="trxInput" class="mono" placeholder="Transaction ID / reference"><button class="fullBtn" id="confirmPayBtn">Tuma Ombi la Malipo</button><button class="backBtn" id="backBtn">Rudi nyuma</button></div>`;
+   document.getElementById('confirmPayBtn')?.addEventListener('click',()=>{const phone=document.getElementById('phoneInput').value.trim(),trx=document.getElementById('trxInput').value.trim();if(phone.length<9){showToast('Weka namba sahihi');return}const no='MGS-'+Math.floor(100000+Math.random()*900000);z.orders.push({orderNo:no,username:currentUser?.username||'guest',phone,transactionId:trx,games:cart.map(g=>({id:g.id,title:g.title,price:g.price,link:g.link||''})),total,status:'pending',createdAt:new Date().toISOString()});sv(z);orderNo=no;phoneVal=phone;checkoutStep='done';renderCartDrawer()});
+   document.getElementById('backBtn')?.addEventListener('click',()=>{checkoutStep='cart';renderCartDrawer()});
+  } else {
+   const o=z.orders.find(x=>x.orderNo===orderNo), ok=o&&o.status==='paid';
+   pane.innerHTML=`<div class="donePane"><div class="doneIcon">${icon(ok?'Check':'Clock',28,ok?'var(--teal)':'var(--gold)')}</div><h3>${ok?'Malipo Yameidhinishwa':'Ombi la Malipo Limetumwa'}</h3><p style="color:var(--muted);font-size:13px">Oda: <span class="mono" style="color:var(--gold)">${orderNo}</span></p><p style="color:var(--muted);font-size:13px">${ok?'Pakua games zako hapa chini.':'Subiri admin athibitishe malipo yako.'}</p>${ok?(o.games||[]).map(g=>`<a class="fullBtn" style="display:block;text-align:center;text-decoration:none;margin:7px 0" href="${g.link||'#'}" target="_blank" onclick="if(window.maherRecordDownload){const gg=MAHER.get().games.find(x=>x.id==${g.id});if(gg)maherRecordDownload(gg)}">Pakua ${g.title}</a>`).join(''):''}<button class="fullBtn" id="doneBtn">Funga</button></div>`;
+   document.getElementById('doneBtn').onclick=()=>{cart=[];updateCartCount();closeDrawer()};
+  }
+ };
+ // Replace the old fixed payment label if present.
+ const oldRender=window.renderViewContent;
+ if(oldRender)window.renderViewContent=function(){oldRender()};
+ // When website loads, use admin-managed games/settings.
+ window.addEventListener('storage',()=>{const z=st();window.games=z.games||[];render()});
+})();
+</script>
+</body>
+</html>
