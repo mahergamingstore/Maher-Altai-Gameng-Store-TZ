@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="sw">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MaherGamingStore — Admin Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@700;800&display=swap');
+  body{font-family:'Rajdhani',sans-serif;background:#05070B;color:#f1f5f9;}
+  .brandfont{font-family:'Orbitron',sans-serif;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:8px;}
+</style>
+</head>
+<body class="min-h-screen">
+<div class="flex flex-col md:flex-row">
+  <aside class="md:w-56 border-b md:border-b-0 md:border-r border-slate-800 md:min-h-screen p-4">
+    <div class="flex items-center gap-2 mb-1 px-1">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-slate-950">🛡️</div>
+      <span class="brandfont font-extrabold">Admin</span>
+    </div>
+    <p class="text-[10px] text-slate-500 px-1 mb-4">MaherGamingStore Dashboard</p>
+    <nav class="flex md:flex-col gap-1 overflow-x-auto" id="nav"></nav>
+  </aside>
+  <main class="flex-1 p-4 sm:p-6" id="main"></main>
+</div>
+
+<script>
+/* ================= shared data layer (Firebase Realtime Database — free) =================
+   HII NDIYO SEHEMU MUHIMU: badilisha DB_URL hapa chini na URL ya database yako ya Firebase,
+   sawasawa kabisa na ile uliyoweka kwenye faili ya website (lazima ziwe DB_URL ile ile
+   mbili zote, ili dashboard na website zisome/ziandike sehemu moja). */
+const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
+
+const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
+  tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims" };
+
+function withTimeout(promise, ms){
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => { if(!done){ done = true; resolve(null); } }, ms);
+    Promise.resolve(promise).then((v) => { if(!done){ done = true; clearTimeout(timer); resolve(v); } })
+      .catch(() => { if(!done){ done = true; clearTimeout(timer); resolve(null); } });
+  });
+}
+const STORAGE_OK = !DB_URL.includes("PROJECT-ID");
+async function getJSON(key, fallback){
+  if(!STORAGE_OK) return fallback;
+  try{
+    const res = await withTimeout(fetch(`${DB_URL}/${key}.json`), 20000);
+    if(!res) return fallback;
+    const data = await res.json();
+    return (data === null || data === undefined) ? fallback : data;
+  }catch{ return fallback; }
+}
+async function setJSON(key, value){
+  if(!STORAGE_OK) return false;
+  try{
+    const res = await withTimeout(fetch(`${DB_URL}/${key}.json`, { method:"PUT", body: JSON.stringify(value) }), 20000);
+    return !!res && res.ok;
+  }catch(e){ console.error("storage set failed", e); return false; }
+}
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const esc = (s) => (s || "").toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fileToDataUrl(file, cb){ const reader = new FileReader(); reader.onload = () => cb(reader.result); reader.onerror = () => cb(null); reader.readAsDataURL(file); }
+/* compresses/resizes an uploaded image before storing it, so uploads are fast and reliable.
+   Small files skip the canvas step entirely (fastest, most reliable path). Bigger files get
+   resized; if that ever hangs or fails on a phone, it automatically falls back to the plain
+   picture after a few seconds instead of getting stuck forever. */
+function compressImage(file, cb, maxDim=900, quality=0.72){
+  try{
+    if(!file || file.size < 600*1024){ fileToDataUrl(file, cb); return; }
+    let settled = false;
+    const finish = (result) => { if(settled) return; settled = true; cb(result); };
+    const fallbackTimer = setTimeout(() => fileToDataUrl(file, finish), 6000);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try{
+          let { width, height } = img;
+          if(width > maxDim || height > maxDim){
+            if(width > height){ height = Math.round(height * (maxDim/width)); width = maxDim; }
+            else { width = Math.round(width * (maxDim/height)); height = maxDim; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          clearTimeout(fallbackTimer);
+          finish(canvas.toDataURL("image/jpeg", quality));
+        }catch{ clearTimeout(fallbackTimer); finish(e.target.result); }
+      };
+      img.onerror = () => { clearTimeout(fallbackTimer); finish(e.target.result); };
+      img.src = e.target.result;
+    };
+    reader.onerror = () => { clearTimeout(fallbackTimer); fileToDataUrl(file, finish); };
+    reader.readAsDataURL(file);
+  }catch{ fileToDataUrl(file, cb); }
+}
+function genCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c=""; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)]; return c; }
+
+const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter"];
+const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
+
+/* ================= state ================= */
+const emptyGameForm = { title:"", image:"", category:"Bure", genre:"Action", coinCost:"", price:"",
+  linkApk:"", linkObb:"", linkData:"", platform:"PC", needsEmulator:false, emulatorImage:"",
+  emulatorLink:"", firmwareLink:"", prodKeysLink:"", trending:false };
+let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settings:{}, payments:[],
+  stats:{ visits:0, dailyDownloads:{}, downloadsLog:[] },
+  gameForm: { ...emptyGameForm },
+  adForm:{ image:"", description:"", link:"" },
+  tourForm:{ name:"", type:"league", fee:"", description:"" },
+};
+
+/* ================= focus-preserving render wrapper ================= */
+function withFocusPreserved(fn){
+  const active = document.activeElement;
+  const id = active && active.id;
+  const tag = active && active.tagName;
+  let selStart, selEnd;
+  if(id && (tag === "INPUT" || tag === "TEXTAREA")){ selStart = active.selectionStart; selEnd = active.selectionEnd; }
+  fn();
+  if(id){
+    const el = document.getElementById(id);
+    if(el){
+      el.focus();
+      if((tag === "INPUT" || tag === "TEXTAREA") && typeof selStart === "number" && el.setSelectionRange){
+        try{ el.setSelectionRange(selStart, selEnd); }catch(e){}
+      }
+    }
+  }
+}
+/* keep current typed values in state.gameForm before a re-render triggered by a checkbox/select change */
+function syncGameFormFromDom(){
+  const f = state.gameForm;
+  const g = (id) => document.getElementById(id);
+  if(g("g-title")) f.title = g("g-title").value;
+  if(g("g-category")) f.category = g("g-category").value;
+  if(g("g-genre")) f.genre = g("g-genre").value;
+  if(g("g-coincost")) f.coinCost = g("g-coincost").value;
+  if(g("g-price")) f.price = g("g-price").value;
+  if(g("g-link-apk")) f.linkApk = g("g-link-apk").value;
+  if(g("g-link-obb")) f.linkObb = g("g-link-obb").value;
+  if(g("g-link-data")) f.linkData = g("g-link-data").value;
+  if(g("g-platform")) f.platform = g("g-platform").value;
+  if(g("g-emu-link")) f.emulatorLink = g("g-emu-link").value;
+  if(g("g-firmware-link")) f.firmwareLink = g("g-firmware-link").value;
+  if(g("g-prodkeys-link")) f.prodKeysLink = g("g-prodkeys-link").value;
+  if(g("g-needs-emu")) f.needsEmulator = g("g-needs-emu").checked;
+  if(g("g-trending")) f.trending = g("g-trending").checked;
+}
+function syncAdFormFromDom(){
+  const f = state.adForm;
+  const g = (id) => document.getElementById(id);
+  if(g("a-desc")) f.description = g("a-desc").value;
+  if(g("a-link")) f.link = g("a-link").value;
+}
+function syncTourFormFromDom(){
+  const f = state.tourForm;
+  const g = (id) => document.getElementById(id);
+  if(g("t-name")) f.name = g("t-name").value;
+  if(g("t-type")) f.type = g("t-type").value;
+  if(g("t-fee")) f.fee = g("t-fee").value;
+  if(g("t-desc")) f.description = g("t-desc").value;
+}
+function syncSettingsFormFromDom(){
+  const g = (id) => document.getElementById(id);
+  if(g("s-network")) state.settings.paymentNetwork = g("s-network").value;
+  if(g("s-phone")) state.settings.paymentPhone = g("s-phone").value;
+}
+function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); }
+
+async function refresh(){
+  const [u,g,a,t,s,p,st] = await Promise.all([
+    getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
+    getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
+  ]);
+  state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
+}
+
+function badge(text, tone){
+  const tones = { cyan:"bg-cyan-400/10 text-cyan-300 border-cyan-400/30", violet:"bg-violet-400/10 text-violet-300 border-violet-400/30",
+    amber:"bg-amber-400/10 text-amber-300 border-amber-400/30", rose:"bg-rose-400/10 text-rose-300 border-rose-400/30" };
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border ${tones[tone]}">${text}</span>`;
+}
+
+/* ================= nav ================= */
+function renderNav(){
+  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["tournament","🏆 Tournament"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
+  const pendingCount = state.payments.filter(p=>p.status==="pending" && p.type!=="coin").length + state.payments.filter(p=>p.type==="coin" && p.status==="pending").length;
+  document.getElementById("nav").innerHTML = items.map(([key,label]) => `
+    <button data-tab="${key}" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${state.tab===key ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:bg-slate-900"}">
+      ${label}${key==="payments" && pendingCount>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${pendingCount}</span>` : ""}
+    </button>`).join("");
+}
+
+/* ================= overview ================= */
+function statCard(icon, label, value, tone){
+  const tones = { cyan:"text-cyan-300 bg-cyan-400/10", emerald:"text-emerald-300 bg-emerald-400/10", amber:"text-amber-300 bg-amber-400/10", violet:"text-violet-300 bg-violet-400/10" };
+  return `<div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 flex items-center gap-3">
+    <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg ${tones[tone]}">${icon}</div>
+    <div><p class="text-2xl font-extrabold leading-none">${value}</p><p class="text-[11px] text-slate-500 mt-1">${label}</p></div>
+  </div>`;
+}
+
+function renderOverview(){
+  const today = new Date().toISOString().slice(0,10);
+  const todayDownloads = (state.stats.dailyDownloads && state.stats.dailyDownloads[today]) || 0;
+  const totalDownloads = Object.values(state.stats.dailyDownloads||{}).reduce((a,b)=>a+b,0);
+  const purchases = state.payments.filter(p=>p.type==="game" && p.status==="approved").length;
+  const freeDownloads = (state.stats.downloadsLog||[]).filter(d=>d.type==="free").length;
+  const days = Object.entries(state.stats.dailyDownloads||{}).sort((a,b)=> a[0]<b[0] ? 1 : -1).slice(0,7);
+  const trendingGames = state.games.filter(g=>g.trending);
+
+  return `
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    ${statCard("👁","Watu waliotembelea", state.stats.visits||0, "cyan")}
+    ${statCard("➕","Akaunti zilizofunguliwa", state.users.length, "violet")}
+    ${statCard("🛒","Game zilizonunuliwa", purchases, "amber")}
+    ${statCard("⬇","Download za Bure", freeDownloads, "emerald")}
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <p class="text-xs font-bold text-slate-400 mb-3">Downloads za Leo (${today})</p>
+      <p class="text-4xl font-extrabold text-emerald-400">${todayDownloads}</p>
+      <p class="text-[11px] text-slate-500 mt-1">Jumla ya downloads zote: ${totalDownloads}</p>
+      <div class="mt-4 space-y-1">
+        ${days.map(([d,c])=>`<div class="flex items-center justify-between text-[11px] text-slate-400"><span>${d}</span><span class="font-bold text-slate-200">${c}</span></div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna data.</p>`}
+      </div>
+    </div>
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">🔥</span><p class="text-xs font-bold text-slate-400">Game Zinazo-Trend</p></div>
+      <div class="space-y-2 max-h-52 overflow-y-auto">
+        ${trendingGames.length===0 ? `<p class="text-slate-600 text-xs">Hakuna game za trending bado.</p>` :
+          trendingGames.map(g=>`<div class="flex items-center gap-2 bg-slate-950/60 rounded-lg p-2">${g.image?`<img src="${g.image}" class="w-8 h-8 rounded object-cover"/>`:""}<span class="text-xs font-semibold truncate">${esc(g.title)}</span></div>`).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= games panel ================= */
+function renderGames(){
+  const f = state.gameForm;
+  return `
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">➕ Ongeza Game Mpya</h3>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Game</span>
+        <input id="g-title" value="${esc(f.title)}" class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-400 outline-none rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Game</span>
+        <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer">
+          <span id="g-image-label">${f.image ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
+          <input id="g-image" type="file" accept="image/*" class="hidden" />
+        </label></label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina ya Malipo (Bure/Kulipia)</span>
+          <select id="g-category" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+            <option ${f.category==="Bure"?"selected":""}>Bure</option><option ${f.category==="Kulipia"?"selected":""}>Kulipia</option>
+          </select></label>
+        <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Bei (kama Kulipia)</span>
+          <input id="g-price" value="${esc(f.price)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano 2000 TZS" /></label>
+      </div>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Category ya Game (Genre)</span>
+        <select id="g-genre" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          ${GENRES.map(gr=>`<option ${f.genre===gr?"selected":""}>${gr}</option>`).join("")}
+        </select></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Coins zinazohitajika kufungua (hiari — acha wazi kama hakuna)</span>
+        <input id="g-coincost" type="number" min="0" value="${esc(f.coinCost)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano 200" /></label>
+      <div class="mb-1"><span class="block text-xs font-semibold text-slate-400 mb-1">Link za Game (weka zinazohitajika)</span></div>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya APK</span>
+        <input id="g-link-apk" value="${esc(f.linkApk)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya OBB (hiari)</span>
+        <input id="g-link-obb" value="${esc(f.linkObb)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya Data (hiari)</span>
+        <input id="g-link-data" value="${esc(f.linkData)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Platform</span>
+        <select id="g-platform" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          <option ${f.platform==="PC"?"selected":""}>PC</option><option ${f.platform==="Android"?"selected":""}>Android</option><option ${f.platform==="Both"?"selected":""}>Both</option>
+        </select></label>
+      <label class="flex items-center gap-2 mb-3 text-xs font-semibold text-slate-300">
+        <input id="g-needs-emu" type="checkbox" ${f.needsEmulator?"checked":""} /> Game inahitaji Emulator</label>
+      ${f.needsEmulator ? `
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Emulator</span>
+        <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer">
+          <span id="g-emu-image-label">${f.emulatorImage ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
+          <input id="g-emu-image" type="file" accept="image/*" class="hidden" />
+        </label></label>
+      <div class="mb-1"><span class="block text-xs font-semibold text-slate-400 mb-1">Link za Emulator (weka zinazohitajika)</span></div>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya Emulator</span>
+        <input id="g-emu-link" value="${esc(f.emulatorLink)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya Firmware (hiari)</span>
+        <input id="g-firmware-link" value="${esc(f.firmwareLink)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Link ya Prod Keys (hiari)</span>
+        <input id="g-prodkeys-link" value="${esc(f.prodKeysLink)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>` : ""}
+      <label class="flex items-center gap-2 mb-4 text-xs font-semibold text-slate-300">
+        <input id="g-trending" type="checkbox" ${f.trending?"checked":""} /> Ionekane sehemu ya "Zinazo-Trend" Home</label>
+      <button data-action="save-game" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Hifadhi Game</button>
+    </div>
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">Game Zilizopo (${state.games.length})</h3>
+      <div class="space-y-2 max-h-[560px] overflow-y-auto">
+        ${state.games.map(g => `
+          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
+            ${g.image ? `<img src="${g.image}" class="w-10 h-10 rounded object-cover"/>` : `<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-600">🎮</div>`}
+            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(g.title)}</p><p class="text-[10px] text-slate-500">${esc(g.category)} · ${esc(g.genre||"—")} · ${esc(g.platform)}${g.coinCost ? ` · 🪙${esc(g.coinCost)}` : ""}</p></div>
+            <button data-action="toggle-trending" data-id="${g.id}" title="Trending" class="p-1.5 rounded ${g.trending ? "text-rose-400 bg-rose-400/10" : "text-slate-600"}">🔥</button>
+            <button data-action="remove-game" data-id="${g.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
+          </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hujaongeza game yoyote.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= ads panel ================= */
+function renderAds(){
+  const f = state.adForm;
+  return `
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">➕ Ongeza Tangazo (Screen ${Math.min(state.ads.length+1,2)})</h3>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Tangazo</span>
+        <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer">
+          <span id="a-image-label">${f.image ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
+          <input id="a-image" type="file" accept="image/*" class="hidden" />
+        </label></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Maelezo mafupi</span>
+        <input id="a-desc" value="${esc(f.description)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Link</span>
+        <input id="a-link" value="${esc(f.link)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
+      <button data-action="save-ad" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Hifadhi Tangazo</button>
+      <p class="text-[11px] text-slate-500 mt-2">Kumbuka: website inaonesha screen mbili tu za matangazo kwa wakati mmoja.</p>
+    </div>
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">Matangazo Yaliyopo</h3>
+      <div class="space-y-3">
+        ${state.ads.map((a,i)=>`
+          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
+            <img src="${a.image}" class="w-14 h-10 rounded object-cover"/>
+            <div class="flex-1 min-w-0"><p class="text-xs font-bold">Screen ${i+1}</p><p class="text-[11px] text-slate-500 truncate">${esc(a.description)}</p></div>
+            <button data-action="remove-ad" data-id="${a.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
+          </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hujaongeza tangazo.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= tournaments panel ================= */
+function renderTournamentPanel(){
+  const f = state.tourForm;
+  return `
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">➕ Fungua Tournament Mpya</h3>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Tournament</span>
+        <input id="t-name" value="${esc(f.name)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina</span>
+        <select id="t-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          <option value="league" ${f.type==="league"?"selected":""}>Ligi</option><option value="knockout" ${f.type==="knockout"?"selected":""}>Knockout</option>
+        </select></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Ada ya kujiunga</span>
+        <input id="t-fee" value="${esc(f.fee)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano 1000 TZS" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Maelezo</span>
+        <textarea id="t-desc" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">${esc(f.description)}</textarea></label>
+      <button data-action="save-tournament" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Fungua Tournament</button>
+    </div>
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+      <h3 class="font-bold mb-3">Tournament Zilizopo</h3>
+      <div class="space-y-2">
+        ${state.tournaments.map(t=>`
+          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
+            <div class="flex-1"><p class="text-xs font-bold">${esc(t.name)}</p><p class="text-[10px] text-slate-500">${t.type==="league"?"Ligi":"Knockout"} · Ada: ${esc(t.fee)}</p></div>
+            <button data-action="remove-tournament" data-id="${t.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
+          </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna tournament.</p>`}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================= payments panel ================= */
+function renderPayments(){
+  const cash = state.payments.filter(p=>p.type==="game" || p.type==="tournament");
+  const coinReqs = state.payments.filter(p=>p.type==="coin");
+  const pending = cash.filter(p=>p.status==="pending");
+  const decided = cash.filter(p=>p.status!=="pending").slice().reverse();
+  const coinPending = coinReqs.filter(p=>p.status==="pending");
+  const coinIssued = coinReqs.filter(p=>p.status==="code_issued");
+  const coinDone = coinReqs.filter(p=>p.status==="approved" || p.status==="rejected").slice().reverse();
+
+  return `
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
+    <h3 class="font-bold mb-3">💳 Namba za Malipo (zinaonekana kwa wateja)</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Mtandao (M-Pesa, Tigo Pesa, Airtel Money...)</span>
+        <input id="s-network" value="${esc(state.settings.paymentNetwork||"")}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Namba ya Simu ya Malipo</span>
+        <input id="s-phone" value="${esc(state.settings.paymentPhone||"")}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+    </div>
+    <button data-action="save-settings" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Hifadhi</button>
+  </div>
+
+  <h3 class="font-bold mb-3">⏱ Malipo ya Pesa Yanayosubiri Idhini (${pending.length})</h3>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+    ${pending.map(p=>`
+      <div class="bg-slate-900/70 border border-amber-500/30 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold">${p.type==="game"?"🎮 Game":"🏆 Tournament"}: ${esc(p.targetName)}</span>
+          <span class="text-[10px] text-slate-500">${new Date(p.submittedAt).toLocaleString()}</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Mteja: ${esc(p.username)} (${esc(p.userPhone)})</p>
+        <p class="text-[11px] text-slate-400 mb-2">Alilipia kwa namba: <span class="font-mono text-slate-200">${esc(p.payerPhone)}</span></p>
+        <img src="${p.screenshot}" class="w-full rounded-lg border border-slate-800 mb-2 max-h-52 object-contain bg-slate-950"/>
+        <div class="flex gap-2">
+          <button data-action="decide-payment" data-id="${p.id}" data-status="approved" class="flex-1 bg-emerald-500 text-slate-950 font-bold text-xs py-2 rounded-lg">✅ Ruhusu</button>
+          <button data-action="decide-payment" data-id="${p.id}" data-status="rejected" class="flex-1 bg-rose-500/80 text-slate-950 font-bold text-xs py-2 rounded-lg">✖ Kataa</button>
+        </div>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Hakuna malipo ya pesa yanayosubiri kwa sasa.</p>`}
+  </div>
+
+  <h3 class="font-bold mb-3">🪙 Maombi ya Kufungua kwa Coins (${coinPending.length})</h3>
+  <p class="text-[11px] text-slate-500 mb-3">Mteja ana coins za kutosha lakini hana pesa. Mtolee code, kisha mwambie aiweke kwenye website yake (simu/SMS).</p>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+    ${coinPending.map(p=>`
+      <div class="bg-slate-900/70 border border-amber-500/30 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold">🎮 ${esc(p.targetName)}</span>
+          <span class="text-[10px] text-slate-500">${new Date(p.submittedAt).toLocaleString()}</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Mteja: ${esc(p.username)} (${esc(p.userPhone)})</p>
+        <p class="text-[11px] text-slate-400 mb-3">Coins zinazohitajika: <span class="text-amber-300 font-bold">🪙 ${esc(p.coinCost)}</span></p>
+        <div class="flex gap-2">
+          <button data-action="issue-coin-code" data-id="${p.id}" class="flex-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs py-2 rounded-lg">🔑 Toa Code</button>
+          <button data-action="decide-payment" data-id="${p.id}" data-status="rejected" class="flex-1 bg-rose-500/80 text-slate-950 font-bold text-xs py-2 rounded-lg">✖ Kataa</button>
+        </div>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Hakuna maombi mapya ya coins.</p>`}
+  </div>
+
+  ${coinIssued.length > 0 ? `
+  <h3 class="font-bold mb-3 text-slate-400 text-sm">Code Zilizotolewa (zinasubiri mteja aweke)</h3>
+  <div class="space-y-2 mb-6">
+    ${coinIssued.map(p=>`
+      <div class="flex items-center justify-between bg-slate-950/60 rounded-lg p-2 text-xs">
+        <span>${esc(p.targetName)} — ${esc(p.username)} (${esc(p.userPhone)})</span>
+        <span class="font-mono font-bold text-violet-300 tracking-widest">${esc(p.code)}</span>
+      </div>`).join("")}
+  </div>` : ""}
+
+  <h3 class="font-bold mb-3 text-slate-400 text-sm">Historia ya Malipo ya Pesa</h3>
+  <div class="space-y-2 mb-6">
+    ${decided.map(p=>`
+      <div class="flex items-center justify-between bg-slate-950/60 rounded-lg p-2 text-xs">
+        <span>${esc(p.targetName)} — ${esc(p.username)}</span>
+        <span class="${p.status==="approved" ? "text-emerald-400" : "text-rose-400"} font-bold">${p.status==="approved" ? "Imeruhusiwa" : "Imekataliwa"}</span>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna historia.</p>`}
+  </div>
+
+  <h3 class="font-bold mb-3 text-slate-400 text-sm">Historia ya Coins</h3>
+  <div class="space-y-2">
+    ${coinDone.map(p=>`
+      <div class="flex items-center justify-between bg-slate-950/60 rounded-lg p-2 text-xs">
+        <span>${esc(p.targetName)} — ${esc(p.username)}</span>
+        <span class="${p.status==="approved" ? "text-emerald-400" : "text-rose-400"} font-bold">${p.status==="approved" ? "Imefunguliwa (redeemed)" : "Imekataliwa"}</span>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna historia.</p>`}
+  </div>`;
+}
+
+/* ================= users panel ================= */
+function renderUsers(){
+  return `
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+    <h3 class="font-bold mb-3">👥 Watumiaji Waliojisajili (${state.users.length})</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-xs">
+        <thead><tr class="text-slate-500 text-left border-b border-slate-800">
+          <th class="py-2 pr-3">Jina</th><th class="py-2 pr-3">Simu</th><th class="py-2 pr-3">Gmail</th><th class="py-2 pr-3">Coins</th><th class="py-2">Tarehe</th>
+        </tr></thead>
+        <tbody>
+          ${state.users.map(u=>`
+            <tr class="border-b border-slate-900">
+              <td class="py-2 pr-3 font-semibold">${esc(u.username)}</td>
+              <td class="py-2 pr-3 font-mono">${esc(u.phone)}</td>
+              <td class="py-2 pr-3 text-slate-400">${esc(u.gmail)}</td>
+              <td class="py-2 pr-3 text-amber-300 font-bold">${u.coins||0}</td>
+              <td class="py-2 text-slate-500">${new Date(u.createdAt).toLocaleDateString()}</td>
+            </tr>`).join("") || `<tr><td colspan="5" class="text-slate-600 text-xs pt-2">Bado hakuna aliyejisajili.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ================= render root ================= */
+function _render(){
+  syncAllForms();
+  renderNav();
+  const main = document.getElementById("main");
+  if(state.tab==="overview") main.innerHTML = renderOverview();
+  else if(state.tab==="games") main.innerHTML = renderGames();
+  else if(state.tab==="ads") main.innerHTML = renderAds();
+  else if(state.tab==="tournament") main.innerHTML = renderTournamentPanel();
+  else if(state.tab==="payments") main.innerHTML = renderPayments();
+  else if(state.tab==="users") main.innerHTML = renderUsers();
+}
+function render(){ withFocusPreserved(_render); }
+
+/* ================= file input handling ================= */
+document.addEventListener("change", (e) => {
+  if(e.target.id === "g-image" && e.target.files[0]){ document.getElementById("g-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.image = d; document.getElementById("g-image-label").textContent = "Picha imewekwa ✔"; }); }
+  if(e.target.id === "g-emu-image" && e.target.files[0]){ document.getElementById("g-emu-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.emulatorImage = d; document.getElementById("g-emu-image-label").textContent = "Picha imewekwa ✔"; }); }
+  if(e.target.id === "a-image" && e.target.files[0]){ document.getElementById("a-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.adForm.image = d; document.getElementById("a-image-label").textContent = "Picha imewekwa ✔"; }); }
+  if(e.target.id === "g-needs-emu"){ render(); }
+});
+
+/* ================= global click handling ================= */
+document.addEventListener("click", async (e) => {
+  const tabBtn = e.target.closest("[data-tab]");
+  if(tabBtn){ state.tab = tabBtn.dataset.tab; render(); return; }
+
+  const act = e.target.closest("[data-action]");
+  if(!act) return;
+  const action = act.dataset.action;
+
+  if(action === "save-game"){
+    const f = state.gameForm;
+    f.title = document.getElementById("g-title").value.trim();
+    f.category = document.getElementById("g-category").value;
+    f.genre = document.getElementById("g-genre").value;
+    f.coinCost = document.getElementById("g-coincost").value.trim();
+    f.price = document.getElementById("g-price").value.trim();
+    f.linkApk = document.getElementById("g-link-apk").value.trim();
+    f.linkObb = document.getElementById("g-link-obb").value.trim();
+    f.linkData = document.getElementById("g-link-data").value.trim();
+    f.platform = document.getElementById("g-platform").value;
+    f.needsEmulator = document.getElementById("g-needs-emu").checked;
+    if(f.needsEmulator){
+      f.emulatorLink = document.getElementById("g-emu-link").value.trim();
+      f.firmwareLink = document.getElementById("g-firmware-link").value.trim();
+      f.prodKeysLink = document.getElementById("g-prodkeys-link").value.trim();
+    }
+    f.trending = document.getElementById("g-trending").checked;
+    if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
+    const ok = await setJSON(K.games, [...state.games, { id: uid(), ...f }]);
+    if(!ok){ alert("Imeshindwa kuhifadhi game — angalia mtandao wako kisha jaribu tena."); return; }
+    state.gameForm = { ...emptyGameForm };
+    await refresh(); render();
+    return;
+  }
+  if(action === "toggle-trending"){
+    const next = state.games.map(g => g.id===act.dataset.id ? {...g, trending: !g.trending} : g);
+    await setJSON(K.games, next); await refresh(); render();
+    return;
+  }
+  if(action === "remove-game"){
+    await setJSON(K.games, state.games.filter(g=>g.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+
+  if(action === "save-ad"){
+    const f = state.adForm;
+    f.description = document.getElementById("a-desc").value.trim();
+    f.link = document.getElementById("a-link").value.trim();
+    if(!f.image || !f.link){ alert("Weka picha na link ya tangazo."); return; }
+    let nextAds;
+    if(state.ads.length >= 2){
+      const ok = confirm("Tayari kuna matangazo 2 (screen mbili). Ongeza hii itabadilisha ya kwanza. Endelea?");
+      if(!ok) return;
+      nextAds = [{ id: uid(), ...f }, state.ads[1]].filter(Boolean);
+    } else {
+      nextAds = [...state.ads, { id: uid(), ...f }];
+    }
+    const saved = await setJSON(K.ads, nextAds);
+    if(!saved){ alert("Imeshindwa kuhifadhi tangazo — angalia mtandao wako kisha jaribu tena (jaribu picha nyepesi zaidi)."); return; }
+    state.adForm = { image:"", description:"", link:"" };
+    await refresh(); render();
+    return;
+  }
+  if(action === "remove-ad"){
+    await setJSON(K.ads, state.ads.filter(a=>a.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+
+  if(action === "save-tournament"){
+    const f = state.tourForm;
+    f.name = document.getElementById("t-name").value.trim();
+    f.type = document.getElementById("t-type").value;
+    f.fee = document.getElementById("t-fee").value.trim();
+    f.description = document.getElementById("t-desc").value.trim();
+    if(!f.name || !f.fee){ alert("Weka jina na ada ya tournament."); return; }
+    const ok = await setJSON(K.tournaments, [...state.tournaments, { id: uid(), ...f }]);
+    if(!ok){ alert("Imeshindwa kuhifadhi tournament — angalia mtandao wako kisha jaribu tena."); return; }
+    state.tourForm = { name:"", type:"league", fee:"", description:"" };
+    await refresh(); render();
+    return;
+  }
+  if(action === "remove-tournament"){
+    await setJSON(K.tournaments, state.tournaments.filter(t=>t.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+
+  if(action === "save-settings"){
+    const paymentNetwork = document.getElementById("s-network").value.trim();
+    const paymentPhone = document.getElementById("s-phone").value.trim();
+    await setJSON(K.settings, { paymentNetwork, paymentPhone });
+    await refresh(); render();
+    return;
+  }
+  if(action === "decide-payment"){
+    const next = state.payments.map(p => p.id===act.dataset.id ? {...p, status: act.dataset.status} : p);
+    await setJSON(K.payments, next); await refresh(); render();
+    return;
+  }
+  if(action === "issue-coin-code"){
+    const code = genCode();
+    const next = state.payments.map(p => p.id===act.dataset.id ? {...p, status:"code_issued", code} : p);
+    await setJSON(K.payments, next); await refresh(); render();
+    return;
+  }
+});
+
+/* ================= init ================= */
+render(); // show the UI immediately with empty data, then hydrate below
+if(!STORAGE_OK){
+  const warn = document.createElement("div");
+  warn.className = "px-4 pt-3 text-[11px] text-amber-300";
+  warn.textContent = "⚠️ Bado hujaweka DB_URL yako ya Firebase kwenye code (juu ya <script>). Bila hiyo, taarifa hazitahifadhika wala kuonekana kwenye website.";
+  document.getElementById("main").parentElement.insertBefore(warn, document.getElementById("main").parentElement.firstChild);
+}
+(async function init(){
+  await refresh();
+  render();
+  setInterval(async () => { await refresh(); render(); }, 6000);
+})();
+</script>
+</body>
+</html>
