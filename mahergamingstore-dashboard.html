@@ -100,6 +100,17 @@ function compressImage(file, cb, maxDim=900, quality=0.72){
   }catch{ fileToDataUrl(file, cb); }
 }
 function genCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c=""; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)]; return c; }
+/* huongeza "https://" kiotomatiki kama admin amesahau kuiweka — bila hii, kivinjari
+   hulifasiri link kama sehemu ya website yenyewe badala ya tovuti ya nje, na hapo
+   ndipo kitufe cha Download au Emulator "kilikuwa kinajirudisha" kwenye website. */
+function normalizeUrl(u){
+  if(!u) return u;
+  const t = u.trim();
+  if(!t) return t;
+  if(/^https?:\/\//i.test(t)) return t;
+  if(/^\/\//.test(t)) return "https:" + t;
+  return "https://" + t;
+}
 
 const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter"];
 const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
@@ -529,15 +540,15 @@ document.addEventListener("click", async (e) => {
     f.genre = document.getElementById("g-genre").value;
     f.coinCost = document.getElementById("g-coincost").value.trim();
     f.price = document.getElementById("g-price").value.trim();
-    f.linkApk = document.getElementById("g-link-apk").value.trim();
-    f.linkObb = document.getElementById("g-link-obb").value.trim();
-    f.linkData = document.getElementById("g-link-data").value.trim();
+    f.linkApk = normalizeUrl(document.getElementById("g-link-apk").value.trim());
+    f.linkObb = normalizeUrl(document.getElementById("g-link-obb").value.trim());
+    f.linkData = normalizeUrl(document.getElementById("g-link-data").value.trim());
     f.platform = document.getElementById("g-platform").value;
     f.needsEmulator = document.getElementById("g-needs-emu").checked;
     if(f.needsEmulator){
-      f.emulatorLink = document.getElementById("g-emu-link").value.trim();
-      f.firmwareLink = document.getElementById("g-firmware-link").value.trim();
-      f.prodKeysLink = document.getElementById("g-prodkeys-link").value.trim();
+      f.emulatorLink = normalizeUrl(document.getElementById("g-emu-link").value.trim());
+      f.firmwareLink = normalizeUrl(document.getElementById("g-firmware-link").value.trim());
+      f.prodKeysLink = normalizeUrl(document.getElementById("g-prodkeys-link").value.trim());
     }
     f.trending = document.getElementById("g-trending").checked;
     if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
@@ -560,7 +571,7 @@ document.addEventListener("click", async (e) => {
   if(action === "save-ad"){
     const f = state.adForm;
     f.description = document.getElementById("a-desc").value.trim();
-    f.link = document.getElementById("a-link").value.trim();
+    f.link = normalizeUrl(document.getElementById("a-link").value.trim());
     if(!f.image || !f.link){ alert("Weka picha na link ya tangazo."); return; }
     let nextAds;
     if(state.ads.length >= 2){

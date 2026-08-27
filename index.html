@@ -191,12 +191,20 @@ function gameCard(g){
   const isFree = g.category === "Bure";
   const unlocked = isFree || cashApproved || coinApproved;
 
+  const downloadLinks = [
+    { kind:"apk", label:"APK", url:g.linkApk, color:"bg-rose-500 hover:bg-rose-400" },
+    { kind:"obb", label:"OBB", url:g.linkObb, color:"bg-emerald-500 hover:bg-emerald-400" },
+    { kind:"data", label:"Data", url:g.linkData, color:"bg-blue-500 hover:bg-blue-400" },
+  ].filter(d => d.url);
+
   let actions = "";
   if(unlocked){
     if(state.user){
-      /* real <a> tag = a genuine link click, exactly like the Emulator link — this is what
-         makes it open reliably (a JS-triggered window.open() can get silently blocked). */
-      actions = `<a href="${g.link||'#'}" target="_blank" rel="noreferrer" data-action="download-log" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ Download</a>`;
+      /* real <a> tags = genuine link clicks, exactly like the Emulator link — this is what
+         makes them open reliably (a JS-triggered window.open() can get silently blocked). */
+      actions = downloadLinks.length > 0
+        ? `<div class="mt-3 flex flex-col gap-1.5">${downloadLinks.map(d => `<a href="${d.url}" target="_blank" rel="noreferrer" data-action="download-log" data-id="${g.id}" data-kind="${d.kind}" class="w-full flex items-center justify-center gap-2 ${d.color} text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ ${d.label}</a>`).join("")}</div>`
+        : `<p class="mt-3 text-[11px] text-slate-500 text-center">Link ya download bado haijawekwa na admin.</p>`;
     } else {
       actions = `<button data-action="download" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ Download</button>`;
     }
@@ -236,7 +244,11 @@ function gameCard(g){
       </div>
       <div class="mt-auto">
         ${actions}
-        ${g.needsEmulator && g.emulatorLink ? `<a href="${g.emulatorLink}" target="_blank" rel="noreferrer" class="mt-2 flex items-center justify-center gap-1 text-[11px] text-slate-400 hover:text-amber-300">⚙️ Pata Emulator →</a>` : ""}
+        ${g.needsEmulator ? [
+          g.emulatorLink ? `<a href="${g.emulatorLink}" target="_blank" rel="noreferrer" class="mt-2 flex items-center justify-center gap-1 text-[11px] font-semibold text-violet-300 hover:text-violet-200">⚙️ Emulator →</a>` : "",
+          g.firmwareLink ? `<a href="${g.firmwareLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-teal-300 hover:text-teal-200">🧩 Firmware →</a>` : "",
+          g.prodKeysLink ? `<a href="${g.prodKeysLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-yellow-300 hover:text-yellow-200">🔑 Prod Keys →</a>` : "",
+        ].join("") : ""}
       </div>
     </div>
   </div>`;
@@ -692,13 +704,8 @@ document.addEventListener("click", async (e) => {
   }
 
   if(action === "download"){
-    const g = state.games.find(x=>x.id===act.dataset.id);
-    if(!g) return;
+    /* this button only ever renders for a logged-out visitor — always prompt login */
     if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
-    if(!g.link){ alert("Link ya game hii bado haijawekwa na admin."); return; }
-    window.open(g.link, "_blank");
-    const paidUnlock = state.payments.some(p=>p.userPhone===state.user.phone && (p.type==="game"||p.type==="coin") && p.targetId===g.id && p.status==="approved");
-    await logDownload(g, g.category==="Bure" ? "free" : (paidUnlock ? "paid" : "free"));
     return;
   }
   if(action === "download-log"){
