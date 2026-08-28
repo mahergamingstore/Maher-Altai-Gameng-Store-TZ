@@ -103,7 +103,7 @@ const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Sh
 
 /* ================= state ================= */
 let state = {
-  user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", searchQuery: "",
+  user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", searchQuery: "", viewMode: "vertical",
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
   modal: null,
 };
@@ -260,6 +260,20 @@ function horizontalRow(games){
     ${games.map(g => `<div class="flex-none w-40 sm:w-52 snap-start">${gameCard(g)}</div>`).join("")}
   </div>`;
 }
+function verticalGrid(games){
+  if(games.length===0) return `<p class="text-slate-500 text-sm">Hakuna game bado hapa.</p>`;
+  return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+    ${games.map(g => `<div>${gameCard(g)}</div>`).join("")}
+  </div>`;
+}
+function gamesLayout(games){ return state.viewMode==="horizontal" ? horizontalRow(games) : verticalGrid(games); }
+function viewModeToggleHtml(){
+  return `<div class="flex items-center gap-1.5 mb-3">
+    <span class="text-[11px] text-slate-500 mr-1">Mpangilio:</span>
+    <button data-view-mode="vertical" class="chip flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${state.viewMode==="vertical" ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}">📋 Wima</button>
+    <button data-view-mode="horizontal" class="chip flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${state.viewMode==="horizontal" ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}">↔️ Ulalo</button>
+  </div>`;
+}
 
 /* ================= tournament card ================= */
 function tournamentCard(t){
@@ -397,7 +411,8 @@ function renderStore(){
   </div>
 
   <p class="text-[11px] text-slate-500 mb-2">${list.length} game zimepatikana</p>
-  ${horizontalRow(list)}`;
+  ${viewModeToggleHtml()}
+  ${gamesLayout(list)}`;
 }
 
 function renderAds(){
@@ -652,6 +667,9 @@ document.addEventListener("click", async (e) => {
 
   const genreBtn = e.target.closest("[data-filter-genre]");
   if(genreBtn){ state.genreFilter = genreBtn.dataset.filterGenre; renderApp(); return; }
+
+  const viewModeBtn = e.target.closest("[data-view-mode]");
+  if(viewModeBtn){ state.viewMode = viewModeBtn.dataset.viewMode; renderApp(); return; }
 
   const goGenreBtn = e.target.closest("[data-action='go-genre']");
   if(goGenreBtn){ state.tab="store"; state.genreFilter = goGenreBtn.dataset.genre; state.storeFilter="Zote"; state.searchQuery=""; renderApp(); return; }

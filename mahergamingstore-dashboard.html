@@ -122,6 +122,7 @@ const emptyGameForm = { title:"", image:"", category:"Bure", genre:"Action", coi
 let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settings:{}, payments:[],
   stats:{ visits:0, dailyDownloads:{}, downloadsLog:[] },
   gameForm: { ...emptyGameForm },
+  editingGameId: null,
   adForm:{ image:"", description:"", link:"" },
   tourForm:{ name:"", type:"league", fee:"", description:"" },
 };
@@ -183,6 +184,7 @@ function syncSettingsFormFromDom(){
   if(g("s-phone")) state.settings.paymentPhone = g("s-phone").value;
 }
 function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); }
+let skipFormSync = false; // set true right before a render that must NOT pull stale values back from the old DOM (e.g. loading a game into the form to edit it)
 
 async function refresh(){
   const [u,g,a,t,s,p,st] = await Promise.all([
@@ -258,7 +260,7 @@ function renderGames(){
   return `
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
     <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-      <h3 class="font-bold mb-3">➕ Ongeza Game Mpya</h3>
+      <h3 class="font-bold mb-3">${state.editingGameId ? "✏️ Hariri Game" : "➕ Ongeza Game Mpya"}</h3>
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Game</span>
         <input id="g-title" value="${esc(f.title)}" class="w-full bg-slate-900 border border-slate-700 focus:border-emerald-400 outline-none rounded-lg px-3 py-2 text-sm" /></label>
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Game</span>
@@ -308,15 +310,19 @@ function renderGames(){
         <input id="g-prodkeys-link" value="${esc(f.prodKeysLink)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>` : ""}
       <label class="flex items-center gap-2 mb-4 text-xs font-semibold text-slate-300">
         <input id="g-trending" type="checkbox" ${f.trending?"checked":""} /> Ionekane sehemu ya "Zinazo-Trend" Home</label>
-      <button data-action="save-game" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Hifadhi Game</button>
+      <button data-action="save-game" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">${state.editingGameId ? "💾 Sasisha Game" : "Hifadhi Game"}</button>
+      ${state.editingGameId ? `<button data-action="cancel-edit-game" class="w-full mt-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-sm">Ghairi Uhariri</button>` : ""}
     </div>
     <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
       <h3 class="font-bold mb-3">Game Zilizopo (${state.games.length})</h3>
+      ${state.games.some(g => !g.linkApk && g.link) ? `
+      <button data-action="migrate-old-links" class="w-full mb-3 bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold text-xs py-2.5 rounded-lg">🔧 Rekebisha Game za Zamani (weka Link ya APK kiotomatiki)</button>` : ""}
       <div class="space-y-2 max-h-[560px] overflow-y-auto">
         ${state.games.map(g => `
-          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
+          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2 ${state.editingGameId===g.id ? "ring-1 ring-emerald-400" : ""}">
             ${g.image ? `<img src="${g.image}" class="w-10 h-10 rounded object-cover"/>` : `<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-600">🎮</div>`}
-            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(g.title)}</p><p class="text-[10px] text-slate-500">${esc(g.category)} · ${esc(g.genre||"—")} · ${esc(g.platform)}${g.coinCost ? ` · 🪙${esc(g.coinCost)}` : ""}</p></div>
+            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(g.title)}</p><p class="text-[10px] text-slate-500">${esc(g.category)} · ${esc(g.genre||"—")} · ${esc(g.platform)}${g.coinCost ? ` · 🪙${esc(g.coinCost)}` : ""}${!g.linkApk ? ` · <span class="text-rose-400">bila link</span>` : ""}</p></div>
+            <button data-action="edit-game" data-id="${g.id}" title="Hariri" class="p-1.5 rounded text-slate-600 hover:text-emerald-400">✏️</button>
             <button data-action="toggle-trending" data-id="${g.id}" title="Trending" class="p-1.5 rounded ${g.trending ? "text-rose-400 bg-rose-400/10" : "text-slate-600"}">🔥</button>
             <button data-action="remove-game" data-id="${g.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
           </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hujaongeza game yoyote.</p>`}
@@ -504,7 +510,7 @@ function renderUsers(){
 
 /* ================= render root ================= */
 function _render(){
-  syncAllForms();
+  if(skipFormSync){ skipFormSync = false; } else { syncAllForms(); }
   renderNav();
   const main = document.getElementById("main");
   if(state.tab==="overview") main.innerHTML = renderOverview();
@@ -552,10 +558,35 @@ document.addEventListener("click", async (e) => {
     }
     f.trending = document.getElementById("g-trending").checked;
     if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
-    const ok = await setJSON(K.games, [...state.games, { id: uid(), ...f }]);
+    let nextGames;
+    if(state.editingGameId){
+      nextGames = state.games.map(g => g.id===state.editingGameId ? { ...g, ...f, id: state.editingGameId } : g);
+    } else {
+      nextGames = [...state.games, { id: uid(), ...f }];
+    }
+    const ok = await setJSON(K.games, nextGames);
     if(!ok){ alert("Imeshindwa kuhifadhi game — angalia mtandao wako kisha jaribu tena."); return; }
+    skipFormSync = true;
     state.gameForm = { ...emptyGameForm };
+    state.editingGameId = null;
     await refresh(); render();
+    return;
+  }
+  if(action === "edit-game"){
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!g) return;
+    skipFormSync = true;
+    state.editingGameId = g.id;
+    state.gameForm = { ...emptyGameForm, ...g };
+    render();
+    window.scrollTo({ top:0, behavior:"smooth" });
+    return;
+  }
+  if(action === "cancel-edit-game"){
+    skipFormSync = true;
+    state.editingGameId = null;
+    state.gameForm = { ...emptyGameForm };
+    render();
     return;
   }
   if(action === "toggle-trending"){
@@ -564,7 +595,17 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if(action === "remove-game"){
-    await setJSON(K.games, state.games.filter(g=>g.id!==act.dataset.id)); await refresh(); render();
+    await setJSON(K.games, state.games.filter(g=>g.id!==act.dataset.id));
+    if(state.editingGameId===act.dataset.id){ skipFormSync = true; state.editingGameId = null; state.gameForm = { ...emptyGameForm }; }
+    await refresh(); render();
+    return;
+  }
+  if(action === "migrate-old-links"){
+    const next = state.games.map(g => (!g.linkApk && g.link) ? { ...g, linkApk: normalizeUrl(g.link) } : g);
+    const ok = await setJSON(K.games, next);
+    if(!ok){ alert("Imeshindwa kurekebisha — angalia mtandao wako kisha jaribu tena."); return; }
+    await refresh(); render();
+    alert("Imekamilika — game za zamani sasa zina link ya APK.");
     return;
   }
 
