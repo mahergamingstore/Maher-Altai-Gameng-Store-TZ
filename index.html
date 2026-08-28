@@ -7,9 +7,10 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@700;800&display=swap');
-  body{font-family:'Rajdhani',sans-serif;background:#080B12;color:#f1f5f9;
-    background-image:radial-gradient(circle at 15% 0%, rgba(251,191,36,.10), transparent 40%),
-                      radial-gradient(circle at 85% 15%, rgba(168,85,247,.12), transparent 45%);
+  body{font-family:'Rajdhani',sans-serif;background:#020304;color:#f1f5f9;
+    background-image:radial-gradient(circle at 30% -10%, rgba(255,255,255,.05), transparent 40%),
+                      radial-gradient(circle at 15% 0%, rgba(251,191,36,.06), transparent 40%),
+                      radial-gradient(circle at 85% 15%, rgba(168,85,247,.08), transparent 45%);
     background-attachment:fixed;}
   .brandfont{font-family:'Orbitron',sans-serif;}
   ::-webkit-scrollbar{height:8px;width:8px;}
@@ -22,9 +23,16 @@
   .hero-track{display:flex;transition:transform .5s cubic-bezier(.65,0,.35,1);}
   .hero-slide{flex:0 0 100%;}
   .chip{transition:all .15s ease;}
+  /* animated PlayStation-symbol background (purely decorative, sits behind everything) */
+  .ps-bg{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
+  .ps-symbol{position:absolute;font-weight:800;color:rgba(244,63,94,.55);text-shadow:0 0 16px rgba(244,63,94,.35);will-change:transform;}
+  @keyframes psFloatUp{0%{transform:translateY(112vh) rotate(0deg);opacity:0;}8%{opacity:1;}92%{opacity:1;}100%{transform:translateY(-18vh) rotate(25deg);opacity:0;}}
+  @keyframes psFloatDown{0%{transform:translateY(-18vh) rotate(0deg);opacity:0;}8%{opacity:1;}92%{opacity:1;}100%{transform:translateY(112vh) rotate(-25deg);opacity:0;}}
 </style>
 </head>
 <body class="min-h-screen">
+
+<div class="ps-bg" id="ps-bg"></div>
 
 <header class="sticky top-0 z-40 backdrop-blur bg-[#080B12]/85 border-b border-slate-800">
   <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -109,6 +117,25 @@ let state = {
 };
 
 document.getElementById("year").textContent = new Date().getFullYear();
+
+/* ================= decorative PlayStation-symbol floating background ================= */
+(function initPsBackground(){
+  const host = document.getElementById("ps-bg");
+  if(!host) return;
+  const symbols = ["△","□","○","✕"];
+  const count = 14;
+  let html = "";
+  for(let i=0;i<count;i++){
+    const sym = symbols[i % symbols.length];
+    const left = Math.round((i / count) * 100 + (Math.random()*6 - 3));
+    const size = 22 + Math.round(Math.random()*30);
+    const duration = 14 + Math.round(Math.random()*12);
+    const delay = -Math.round(Math.random()*duration);
+    const goingUp = i % 2 === 0;
+    html += `<span class="ps-symbol" style="left:${left}%;font-size:${size}px;animation:${goingUp?"psFloatUp":"psFloatDown"} ${duration}s linear infinite;animation-delay:${delay}s;">${sym}</span>`;
+  }
+  host.innerHTML = html;
+})();
 
 async function refreshAll(){
   const [g,a,t,s,p,c] = await Promise.all([
