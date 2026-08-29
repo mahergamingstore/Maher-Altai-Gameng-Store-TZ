@@ -75,7 +75,8 @@
 const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
 
 const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
-  tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims" };
+  tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
+  spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -113,6 +114,7 @@ const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Sh
 let state = {
   user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", searchQuery: "", viewMode: "vertical",
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
+  spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
   modal: null,
 };
 
@@ -138,11 +140,13 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
+    getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
+  state.spinConfig=sp; state.coinPackages=cp;
 }
 
 async function bumpVisit(){
@@ -192,7 +196,7 @@ function renderHeader(){
   const el = document.getElementById("header-auth");
   if(state.user){
     el.innerHTML = `
-      <div class="hidden sm:flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 text-xs font-bold text-amber-300">🪙 ${state.user.coins||0}</div>
+      <button data-tab="coins" class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 text-xs font-bold text-amber-300">🪙 ${state.user.coins||0}</button>
       <span class="hidden sm:block text-xs text-slate-400">Habari, ${esc(state.user.username)}</span>
       <button data-action="logout" class="text-slate-400 hover:text-rose-400 text-lg">⏻</button>`;
   } else {
@@ -201,7 +205,7 @@ function renderHeader(){
 }
 
 function renderNav(){
-  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["ads","📣 Matangazo"],["tournament","🏆 Tournament"]];
+  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["ads","📣 Matangazo"],["tournament","🏆 Tournament"]];
   document.getElementById("nav-tabs").innerHTML = tabs.map(([key,label]) => `
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
@@ -240,6 +244,13 @@ function gameCard(g){
       ? `<button disabled class="mt-3 w-full flex items-center justify-center gap-2 bg-slate-800 text-slate-400 text-xs font-bold py-2 rounded-lg">⏱ Pesa: inasubiri idhini</button>`
       : `<button data-action="buy" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-violet-500 hover:bg-violet-400 text-slate-950 text-xs font-bold py-2 rounded-lg">🔒 Lipa Pesa</button>`;
 
+    if(state.spinConfig.symbols && state.spinConfig.symbols.length > 0){
+      const spinPending = myPay.some(p=>p.type==="game" && p.targetId===g.id && p.status==="pending" && p.method==="spin");
+      actions += spinPending
+        ? `<div class="mt-2 text-[11px] text-slate-400 text-center">⏱ Spin Win: inasubiri idhini</div>`
+        : `<button data-action="buy-spin" data-id="${g.id}" class="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-500 to-amber-500 text-slate-950 text-xs font-bold py-2 rounded-lg">🎡 Tumia Spin Win</button>`;
+    }
+
     if(g.coinCost && Number(g.coinCost) > 0){
       if(!coinReq){
         const enough = state.user && (state.user.coins||0) >= Number(g.coinCost);
@@ -264,6 +275,7 @@ function gameCard(g){
     </div>
     <div class="p-3 flex-1 flex flex-col">
       <h4 class="font-bold text-sm text-slate-100 truncate">${esc(g.title)}</h4>
+      ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">💰 ${esc(g.price)}</p>` : ""}
       <div class="flex items-center flex-wrap gap-2 mt-1 text-[11px] text-slate-400">
         <span>${platIcon} ${esc(g.platform)}</span>
         ${g.genre ? `<span>${GENRE_ICON[g.genre]||"🎮"} ${esc(g.genre)}</span>` : ""}
@@ -324,7 +336,7 @@ function tournamentCard(t){
 }
 
 /* ================= hero slideshow (Home) ================= */
-let slideIndex = 0, slideTimer = null;
+let slideIndex = 0, slideTimer = null, lastTrendingKey = null;
 function updateSlidePosition(){
   const track = document.getElementById("hero-track");
   if(track) track.style.transform = `translateX(-${slideIndex*100}%)`;
@@ -342,10 +354,10 @@ function goSlide(i, total){ slideIndex = ((i % total) + total) % total; updateSl
 
 function heroSlideshowHtml(trending){
   if(trending.length===0){
-    return `<div class="rounded-2xl border border-dashed border-slate-800 h-48 sm:h-64 flex items-center justify-center text-slate-600 text-sm mb-8">Hakuna game za trending kwa sasa ili zionekane hapa.</div>`;
+    return `<div class="rounded-2xl border border-dashed border-slate-800 h-72 sm:h-[26rem] flex items-center justify-center text-slate-600 text-sm mb-8">Hakuna game za trending kwa sasa ili zionekane hapa.</div>`;
   }
   return `
-  <div class="relative rounded-2xl overflow-hidden border border-slate-800 h-48 sm:h-64 mb-4 group">
+  <div class="relative rounded-2xl overflow-hidden border border-slate-800 h-72 sm:h-[26rem] mb-4 group">
     <div id="hero-track" class="hero-track h-full">
       ${trending.map(g => `
         <div class="hero-slide relative h-full cursor-pointer" data-action="hero-slide-click" data-id="${g.id}">
@@ -461,20 +473,84 @@ function renderTournament(){
     : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${state.tournaments.map(tournamentCard).join("")}</div>`}`;
 }
 
+/* ================= Coins: balance, buy packages, spin wheel ================= */
+function coinPackageCard(pkg){
+  return `
+  <button data-action="buy-coins" data-id="${pkg.id}" class="relative bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 text-center glow-card">
+    ${pkg.offer ? `<div class="absolute -top-2 left-1/2 -translate-x-1/2">${badge("🔥 OFA","rose")}</div>` : ""}
+    <p class="text-2xl">🪙</p>
+    <p class="font-extrabold text-lg text-amber-300">${esc(pkg.coins)}</p>
+    <p class="text-[11px] text-slate-400 mt-1">${esc(pkg.price)}</p>
+  </button>`;
+}
+
+function spinWheelHtml(){
+  const cfg = state.spinConfig;
+  const symbols = cfg.symbols || [];
+  if(symbols.length===0){
+    return `<p class="text-slate-500 text-sm">Spin bado haijawekwa na admin.</p>`;
+  }
+  const canSpin = state.user && (state.user.coins||0) >= (cfg.costCoins||0) && !state.spinning;
+  return `
+  <div class="flex flex-col items-center">
+    <div id="spin-wheel" class="relative w-56 h-56 sm:w-64 sm:h-64 rounded-full border-4 border-amber-400/60 overflow-hidden grid grid-cols-3 gap-0.5 p-1.5 bg-slate-950 ${state.spinning ? "animate-pulse" : ""}">
+      ${symbols.map((s,i) => `<div class="aspect-square rounded-lg overflow-hidden border ${state.lastSpin && state.lastSpin.symbolId===s.id && !state.spinning ? "border-amber-400 ring-2 ring-amber-400" : "border-slate-800"} bg-slate-900 flex items-center justify-center">${s.image ? `<img src="${s.image}" class="w-full h-full object-cover"/>` : `<span class="text-xl">❓</span>`}</div>`).join("")}
+    </div>
+    <p class="text-[11px] text-slate-500 mt-3">Gharama ya kila Spin: <span class="text-amber-300 font-bold">🪙 ${cfg.costCoins||0}</span></p>
+    <button data-action="spin-now" ${canSpin ? "" : "disabled"} class="mt-2 px-6 py-2.5 rounded-full font-bold text-sm ${canSpin ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "bg-slate-800 text-slate-500 cursor-not-allowed"}">${state.spinning ? "Inazunguka..." : "🎡 Spin Sasa"}</button>
+    ${!state.user ? `<p class="text-amber-300 text-xs mt-2">Ingia kwanza ili uweze ku-spin.</p>` : ""}
+    ${state.lastSpin && !state.spinning ? `
+    <div class="mt-4 bg-slate-900/70 border border-amber-500/40 rounded-xl p-3 text-center max-w-xs">
+      <p class="text-xs text-slate-400 mb-1">🎉 Umepata:</p>
+      ${state.lastSpin.image ? `<img src="${state.lastSpin.image}" class="w-16 h-16 mx-auto rounded-lg object-cover border border-amber-400"/>` : ""}
+      <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">Piga picha ya skrini hii (screenshot), kisha utumie kama uthibitisho unapofungua game ya kulipia — chagua "🎡 Tumia Spin Win" kwenye game husika.</p>
+    </div>` : ""}
+  </div>`;
+}
+
+function renderCoins(){
+  if(!state.user){
+    return `
+    <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🪙</span><h2 class="font-bold">Coins</h2></div>
+    <p class="text-slate-500 text-sm mb-4">Ingia kwanza ili uone coins zako, ununue coins, au ku-spin.</p>
+    <button data-action="open-auth" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Ingia / Jisajili</button>`;
+  }
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🪙</span><h2 class="font-bold">Coins Zangu</h2></div>
+  <div class="bg-gradient-to-br from-amber-500/15 to-violet-500/15 border border-slate-800 rounded-2xl p-6 text-center mb-6">
+    <p class="text-[11px] text-slate-400">Salio lako la sasa</p>
+    <p class="text-4xl font-extrabold text-amber-300 mt-1">🪙 ${state.user.coins||0}</p>
+  </div>
+
+  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">🛍️</span><h2 class="font-bold">Nunua Coins</h2></div>
+  ${state.coinPackages.length===0 ? `<p class="text-slate-500 text-sm mb-8">Bado admin hajaweka pakiti za coins.</p>`
+    : `<div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">${state.coinPackages.map(coinPackageCard).join("")}</div>`}
+
+  <div class="flex items-center gap-2 mb-3"><span class="text-violet-400">🎡</span><h2 class="font-bold">Spin ya Coins</h2></div>
+  <p class="text-slate-500 text-xs mb-4">Spin kwa coins zako — ukishinda, tumia picha ya ushindi kama uthibitisho wa malipo kwenye game za kulipia.</p>
+  ${spinWheelHtml()}`;
+}
+
 function _renderApp(){
   const app = document.getElementById("app");
   if(state.tab==="home") app.innerHTML = renderHome();
   else if(state.tab==="store") app.innerHTML = renderStore();
+  else if(state.tab==="coins") app.innerHTML = renderCoins();
   else if(state.tab==="ads") app.innerHTML = renderAds();
   else if(state.tab==="tournament") app.innerHTML = renderTournament();
   renderHeader();
   renderNav();
   if(state.tab==="ads") startAdTimers();
   if(state.tab==="home"){
-    const trendingCount = state.games.filter(g=>g.trending).length;
-    slideIndex = 0; updateSlidePosition(); startSlideshow(trendingCount);
+    const trendingList = state.games.filter(g=>g.trending);
+    const key = trendingList.map(g=>g.id).join(",");
+    const changed = key !== lastTrendingKey;
+    lastTrendingKey = key;
+    if(changed || slideIndex >= trendingList.length) slideIndex = 0;
+    updateSlidePosition();
+    if(changed || !slideTimer) startSlideshow(trendingList.length);
   } else {
-    clearInterval(slideTimer);
+    clearInterval(slideTimer); slideTimer = null;
   }
 }
 function renderApp(){ withFocusPreserved(_renderApp); }
@@ -524,8 +600,9 @@ function renderModal(){
   const root = document.getElementById("modal-root");
   if(!state.modal){ root.innerHTML = ""; return; }
   if(state.modal.type === "auth") root.innerHTML = authModalHtml(state.modal.mode || "login");
-  if(state.modal.type === "pay") root.innerHTML = payModalHtml(state.modal.target, state.modal.targetType);
+  if(state.modal.type === "pay") root.innerHTML = payModalHtml(state.modal.target, state.modal.targetType, state.modal.method || "cash");
   if(state.modal.type === "coin-redeem") root.innerHTML = coinRedeemModalHtml(state.modal.request);
+  if(state.modal.type === "buycoins") root.innerHTML = buyCoinsModalHtml(state.modal.pkg);
 }
 
 function authModalHtml(mode){
@@ -555,13 +632,45 @@ function authModalHtml(mode){
   </div>`;
 }
 
-function payModalHtml(target, targetType){
+function payModalHtml(target, targetType, method){
+  method = method || "cash";
   return `
   <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
     <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
       <button data-action="close-modal" class="absolute top-3 right-3 text-slate-500 hover:text-slate-200 text-lg">✕</button>
-      <h3 class="font-bold text-lg mb-1">Kamilisha Malipo</h3>
+      <h3 class="font-bold text-lg mb-1">${method==="spin" ? "🎡 Tumia Ushindi wa Spin" : "Kamilisha Malipo"}</h3>
       <p class="text-xs text-slate-500 mb-4">${esc(target.title||target.name)}</p>
+      ${method==="spin" ? `
+      <div class="bg-slate-900 border border-amber-500/40 rounded-lg p-3 mb-4 text-xs text-slate-300 leading-relaxed">
+        Weka namba yako ya simu, kisha picha (screenshot) ya ushindi wako wa Spin badala ya picha ya muamala. Admin ataihakiki kama kawaida.
+      </div>` : `
+      <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 mb-4 text-sm">
+        <p class="text-slate-400 text-xs mb-1">Lipia kupitia:</p>
+        <p class="font-semibold text-amber-300">${esc(state.settings.paymentNetwork||"—")}</p>
+        <p class="font-mono text-slate-100 text-base">${esc(state.settings.paymentPhone||"Bado haijawekwa na admin")}</p>
+      </div>`}
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Namba ya simu yako</span>
+        <input id="pay-phone" class="w-full bg-slate-900/80 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="07xx xxx xxx" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">${method==="spin" ? "Picha ya ushindi wa Spin (screenshot)" : "Picha ya muamala (screenshot)"}</span>
+        <label class="flex items-center justify-center gap-2 border border-dashed border-slate-700 rounded-lg py-4 text-sm text-slate-400 cursor-pointer hover:border-amber-400">
+          <span id="pay-file-label">⬆ Bofya ku-upload picha</span>
+          <input id="pay-file" type="file" accept="image/*" class="hidden" />
+        </label>
+      </label>
+      <p id="pay-error" class="text-rose-400 text-xs mb-2"></p>
+      <button data-action="pay-submit" data-type="${targetType}" data-id="${target.id}" data-method="${method}" class="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
+      <p class="text-[11px] text-slate-500 mt-3">Baada ya admin kuhakiki, utaweza ku-download / kujiunga papo hapo.</p>
+    </div>
+  </div>`;
+}
+
+function buyCoinsModalHtml(pkg){
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+      <button data-action="close-modal" class="absolute top-3 right-3 text-slate-500 hover:text-slate-200 text-lg">✕</button>
+      <h3 class="font-bold text-lg mb-1">🪙 Nunua Coins</h3>
+      <p class="text-xs text-slate-500 mb-4">Pakiti: <span class="text-amber-300 font-bold">${esc(pkg.coins)} coins</span> — ${esc(pkg.price)}</p>
       <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 mb-4 text-sm">
         <p class="text-slate-400 text-xs mb-1">Lipia kupitia:</p>
         <p class="font-semibold text-amber-300">${esc(state.settings.paymentNetwork||"—")}</p>
@@ -576,8 +685,8 @@ function payModalHtml(target, targetType){
         </label>
       </label>
       <p id="pay-error" class="text-rose-400 text-xs mb-2"></p>
-      <button data-action="pay-submit" data-type="${targetType}" data-id="${target.id}" class="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
-      <p class="text-[11px] text-slate-500 mt-3">Baada ya admin kuhakiki, utaweza ku-download / kujiunga papo hapo.</p>
+      <button data-action="buycoins-submit" data-id="${pkg.id}" class="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
+      <p class="text-[11px] text-slate-500 mt-3">Admin atakapohakiki malipo yako, coins zitaongezwa kwenye akaunti yako.</p>
     </div>
   </div>`;
 }
@@ -765,7 +874,43 @@ document.addEventListener("click", async (e) => {
   if(action === "buy"){
     const g = state.games.find(x=>x.id===act.dataset.id);
     if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
-    openModal({type:"pay", target:g, targetType:"game"});
+    openModal({type:"pay", target:g, targetType:"game", method:"cash"});
+    return;
+  }
+
+  if(action === "buy-spin"){
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    openModal({type:"pay", target:g, targetType:"game", method:"spin"});
+    return;
+  }
+
+  if(action === "buy-coins"){
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    const pkg = state.coinPackages.find(x=>x.id===act.dataset.id);
+    if(pkg) openModal({type:"buycoins", pkg});
+    return;
+  }
+
+  if(action === "spin-now"){
+    const cfg = state.spinConfig;
+    const symbols = cfg.symbols || [];
+    if(!state.user || symbols.length===0 || state.spinning) return;
+    const cost = Number(cfg.costCoins||0);
+    if((state.user.coins||0) < cost) return;
+    state.spinning = true; state.lastSpin = null; renderApp();
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){ users[uIdx].coins = Math.max(0, (users[uIdx].coins||0) - cost); await setJSON(K.users, users); state.user = users[uIdx]; }
+    setTimeout(async () => {
+      const totalWeight = symbols.reduce((s,x)=>s+Number(x.weight||1),0) || 1;
+      let r = Math.random() * totalWeight;
+      let picked = symbols[symbols.length-1];
+      for(const s of symbols){ r -= Number(s.weight||1); if(r<=0){ picked = s; break; } }
+      state.lastSpin = { symbolId: picked.id, image: picked.image, at: Date.now() };
+      state.spinning = false;
+      await refreshAll(); renderApp();
+    }, 1400);
     return;
   }
 
@@ -809,7 +954,7 @@ document.addEventListener("click", async (e) => {
   if(action === "join-tournament"){
     const t = state.tournaments.find(x=>x.id===act.dataset.id);
     if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
-    openModal({type:"pay", target:t, targetType:"tournament"});
+    openModal({type:"pay", target:t, targetType:"tournament", method:"cash"});
     return;
   }
 
@@ -825,10 +970,29 @@ document.addEventListener("click", async (e) => {
     if(!payerPhone || !payScreenshotData){ errorEl.textContent = "Weka namba uliyotumia kulipia na picha ya muamala."; return; }
     const type = act.dataset.type;
     const id = act.dataset.id;
+    const method = act.dataset.method || "cash";
     const target = type==="game" ? state.games.find(x=>x.id===id) : state.tournaments.find(x=>x.id===id);
     const payments = await getJSON(K.payments, []);
     const entry = { id: uid(), type, targetId: id, targetName: target.title||target.name, userPhone: state.user.phone,
-      username: state.user.username, payerPhone, screenshot: payScreenshotData, status:"pending", submittedAt: Date.now() };
+      username: state.user.username, payerPhone, screenshot: payScreenshotData, status:"pending", submittedAt: Date.now(),
+      method, spinResult: method==="spin" ? state.lastSpin : null };
+    const ok = await setJSON(K.payments, [...payments, entry]);
+    if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
+    payScreenshotData = null;
+    closeModal(); await refreshAll(); renderApp();
+    return;
+  }
+
+  if(action === "buycoins-submit"){
+    const errorEl = document.getElementById("pay-error");
+    const payerPhone = document.getElementById("pay-phone").value.trim();
+    if(!payerPhone || !payScreenshotData){ errorEl.textContent = "Weka namba uliyotumia kulipia na picha ya muamala."; return; }
+    const pkg = state.coinPackages.find(x=>x.id===act.dataset.id);
+    if(!pkg) return;
+    const payments = await getJSON(K.payments, []);
+    const entry = { id: uid(), type:"coinpurchase", targetId: pkg.id, targetName: `Pakiti ya Coins (${pkg.coins})`,
+      userPhone: state.user.phone, username: state.user.username, payerPhone, screenshot: payScreenshotData,
+      status:"pending", submittedAt: Date.now(), requestedCoins: pkg.coins, packagePrice: pkg.price };
     const ok = await setJSON(K.payments, [...payments, entry]);
     if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
     payScreenshotData = null;
