@@ -101,6 +101,16 @@ function compressImage(file, cb, maxDim=900, quality=0.72){
   }catch{ fileToDataUrl(file, cb); }
 }
 function genCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c=""; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)]; return c; }
+/* Spin difficulty levels — the weight is what actually drives the random draw on the website
+   (bigger weight = picked more often = easier to land on). */
+const SPIN_LEVELS = [
+  { key:"very_hard", label:"Very Hard (Ngumu Sana)" },
+  { key:"hard", label:"Hard (Ngumu)" },
+  { key:"normal", label:"Normal (Wastani)" },
+  { key:"easy", label:"Easy (Rahisi)" },
+  { key:"very_easy", label:"Very Easy (Rahisi Sana)" },
+];
+const SPIN_LEVEL_WEIGHT = { very_hard:3, hard:8, normal:15, easy:25, very_easy:45 };
 /* huongeza "https://" kiotomatiki kama admin amesahau kuiweka — bila hii, kivinjari
    hulifasiri link kama sehemu ya website yenyewe badala ya tovuti ya nje, na hapo
    ndipo kitufe cha Download au Emulator "kilikuwa kinajirudisha" kwenye website. */
@@ -190,7 +200,7 @@ function syncSettingsFormFromDom(){
 }
 function syncSpinFormFromDom(){
   const g = (id) => document.getElementById(id);
-  state.spinConfig.symbols.forEach((s,i) => { if(g(`spin-weight-${i}`)) s.weight = g(`spin-weight-${i}`).value; });
+  state.spinConfig.symbols.forEach((s,i) => { if(g(`spin-level-${i}`)) s.level = g(`spin-level-${i}`).value; });
   if(g("spin-cost")) state.spinConfig.costCoins = g("spin-cost").value;
 }
 function syncPkgFormFromDom(){
@@ -203,6 +213,9 @@ function syncPkgFormFromDom(){
 function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); syncSpinFormFromDom(); syncPkgFormFromDom(); }
 let skipFormSync = false; // set true right before a render that must NOT pull stale values back from the old DOM (e.g. loading a game into the form to edit it)
 
+let spinConfigLoaded = false; // spinConfig is only pulled from Firebase ONCE — after that it's owned by
+// the on-screen form (like gameForm/adForm), so periodic refreshes never wipe an image you just
+// uploaded before you hit "Hifadhi Spin". This was the cause of uploaded pictures "disappearing".
 async function refresh(){
   const [u,g,a,t,s,p,st,sp,cp] = await Promise.all([
     getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
@@ -210,8 +223,12 @@ async function refresh(){
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
   ]);
   state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
-  state.spinConfig = sp && sp.symbols ? sp : { symbols: [], costCoins: 0 };
-  while(state.spinConfig.symbols.length < 5) state.spinConfig.symbols.push({ id: uid(), image:"", weight:20 });
+  if(!spinConfigLoaded){
+    state.spinConfig = sp && sp.symbols ? sp : { symbols: [], costCoins: 0 };
+    while(state.spinConfig.symbols.length < 5) state.spinConfig.symbols.push({ id: uid(), image:"", level:"normal", weight: SPIN_LEVEL_WEIGHT.normal });
+    state.spinConfig.symbols.forEach(s => { if(!s.level) s.level = "normal"; });
+    spinConfigLoaded = true;
+  }
   state.coinPackages = cp || [];
 }
 
@@ -424,7 +441,7 @@ function renderCoinsPanel(){
   return `
   <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
     <h3 class="font-bold mb-3">🎡 Spin ya Coins — Picha 5</h3>
-    <p class="text-[11px] text-slate-500 mb-3">Weka picha 5 (mfano M, N, X, P, J). "Uzito" (weight) ndio unaoamua ugumu — namba kubwa = rahisi kupata, namba ndogo = ngumu kupata. Mfano: weka M uzito wa 3 (ngumu sana), N/X/P uzito wa 15-20, J uzito wa 40 (rahisi zaidi).</p>
+    <p class="text-[11px] text-slate-500 mb-3">Weka picha 5 (mfano M, N, X, P, J), kisha chagua kiwango cha ugumu wa kila moja kupatikana wakati wa Spin.</p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
       ${cfg.symbols.map((s,i) => `
         <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
@@ -435,8 +452,10 @@ function renderCoinsPanel(){
               <input type="file" accept="image/*" class="hidden" data-spin-image="${i}" />
             </label>
             <div class="flex-1">
-              <span class="block text-[10px] text-slate-500 mb-1">Uzito (rahisi/ngumu)</span>
-              <input type="number" min="1" id="spin-weight-${i}" value="${s.weight}" data-spin-weight="${i}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm" />
+              <span class="block text-[10px] text-slate-500 mb-1">Kiwango cha Ugumu</span>
+              <select id="spin-level-${i}" data-spin-level="${i}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm">
+                ${SPIN_LEVELS.map(lv => `<option value="${lv.key}" ${s.level===lv.key?"selected":""}>${lv.label}</option>`).join("")}
+              </select>
             </div>
           </div>
         </div>`).join("")}
@@ -785,13 +804,17 @@ document.addEventListener("click", async (e) => {
   }
   if(action === "save-spin-config"){
     syncSpinFormFromDom();
+    const missingImage = state.spinConfig.symbols.some(s => !s.image);
+    if(missingImage){ alert("Weka picha zote 5 kabla ya kuhifadhi."); return; }
     const cfg = {
-      symbols: state.spinConfig.symbols.map(s => ({ id:s.id, image:s.image, weight: Math.max(1, Number(s.weight)||1) })),
+      symbols: state.spinConfig.symbols.map(s => ({ id:s.id, image:s.image, level: s.level||"normal", weight: SPIN_LEVEL_WEIGHT[s.level] || 15 })),
       costCoins: Math.max(0, Number(state.spinConfig.costCoins)||0),
     };
     const ok = await setJSON(K.spinConfig, cfg);
     if(!ok){ alert("Imeshindwa kuhifadhi Spin — angalia mtandao wako kisha jaribu tena."); return; }
+    state.spinConfig = cfg; // keep the just-saved version locally so the form doesn't need re-fetching
     await refresh(); render();
+    alert("Spin imehifadhiwa!");
     return;
   }
   if(action === "add-coin-package"){
