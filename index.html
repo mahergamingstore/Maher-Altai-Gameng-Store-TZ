@@ -111,10 +111,12 @@ function genCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c=""; fo
 
 const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter"];
 const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
+const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK Android Game","Yuzu/Sudachi/Eden","RPCS3 (PS3)","Xenia (Xbox360)","Cemu (WiiU)","Vita3K (PS3 Lite)"];
+const EMULATOR_ICON = { "PSP":"🎮","WinLator":"🍷","Wii":"🎱","GameCube":"🟣","PC Game":"🖥️","APK Android Game":"📱","Yuzu/Sudachi/Eden":"🧊","RPCS3 (PS3)":"🎯","Xenia (Xbox360)":"❎","Cemu (WiiU)":"🅾️","Vita3K (PS3 Lite)":"🎴" };
 
 /* ================= state ================= */
 let state = {
-  user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", searchQuery: "", viewMode: "vertical",
+  user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", emulatorFilter: "Zote", searchQuery: "", viewMode: "vertical",
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
   spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
   modal: null,
@@ -282,6 +284,7 @@ function gameCard(g){
         <span>${platIcon} ${esc(g.platform)}</span>
         ${g.genre ? `<span>${GENRE_ICON[g.genre]||"🎮"} ${esc(g.genre)}</span>` : ""}
         ${g.needsEmulator ? `<span>⚙️ Emulator</span>` : ""}
+        ${g.needsEmulator && g.emulatorCategory ? `<span>${EMULATOR_ICON[g.emulatorCategory]||"🕹️"} ${esc(g.emulatorCategory)}</span>` : ""}
       </div>
       <div class="mt-auto">
         ${actions}
@@ -435,6 +438,7 @@ function renderStore(){
   const list = state.games.filter(g =>
     (state.storeFilter==="Zote" || g.category===state.storeFilter) &&
     (state.genreFilter==="Zote" || g.genre===state.genreFilter) &&
+    (state.emulatorFilter==="Zote" || g.emulatorCategory===state.emulatorFilter) &&
     (!q || g.title.toLowerCase().includes(q))
   );
   return `
@@ -446,9 +450,13 @@ function renderStore(){
   <div class="flex items-center gap-2 mb-2 overflow-x-auto no-scrollbar">
     ${priceFilters.map(c=>`<button data-filter-price="${c}" class="chip text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap ${state.storeFilter===c ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}">${c}</button>`).join("")}
   </div>
-  <div class="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
+  <div class="flex items-center gap-2 mb-2 overflow-x-auto no-scrollbar">
     <button data-filter-genre="Zote" class="chip text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap ${state.genreFilter==="Zote" ? "bg-violet-500 text-slate-950" : "bg-slate-900 text-slate-400"}">Aina Zote</button>
     ${GENRES.map(gr=>`<button data-filter-genre="${gr}" class="chip text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap ${state.genreFilter===gr ? "bg-violet-500 text-slate-950" : "bg-slate-900 text-slate-400"}">${GENRE_ICON[gr]} ${gr}</button>`).join("")}
+  </div>
+  <div class="flex items-center gap-2 mb-4 overflow-x-auto no-scrollbar">
+    <button data-filter-emulator="Zote" class="chip text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap ${state.emulatorFilter==="Zote" ? "bg-teal-500 text-slate-950" : "bg-slate-900 text-slate-400"}">Emulator Zote</button>
+    ${EMULATOR_CATEGORIES.map(ec=>`<button data-filter-emulator="${ec}" class="chip text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap ${state.emulatorFilter===ec ? "bg-teal-500 text-slate-950" : "bg-slate-900 text-slate-400"}">${EMULATOR_ICON[ec]||"🕹️"} ${ec}</button>`).join("")}
   </div>
 
   <p class="text-[11px] text-slate-500 mb-2">${list.length} game zimepatikana</p>
@@ -820,6 +828,9 @@ document.addEventListener("click", async (e) => {
 
   const genreBtn = e.target.closest("[data-filter-genre]");
   if(genreBtn){ state.genreFilter = genreBtn.dataset.filterGenre; renderApp(); return; }
+
+  const emulatorBtn = e.target.closest("[data-filter-emulator]");
+  if(emulatorBtn){ state.emulatorFilter = emulatorBtn.dataset.filterEmulator; renderApp(); return; }
 
   const viewModeBtn = e.target.closest("[data-view-mode]");
   if(viewModeBtn){ state.viewMode = viewModeBtn.dataset.viewMode; renderApp(); return; }

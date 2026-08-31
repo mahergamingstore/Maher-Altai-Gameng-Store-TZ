@@ -125,10 +125,11 @@ function normalizeUrl(u){
 
 const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter"];
 const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
+const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK Android Game","Yuzu/Sudachi/Eden","RPCS3 (PS3)","Xenia (Xbox360)","Cemu (WiiU)","Vita3K (PS3 Lite)"];
 
 /* ================= state ================= */
 const emptyGameForm = { title:"", image:"", category:"Bure", genre:"Action", coinCost:"", price:"",
-  linkApk:"", linkObb:"", linkData:"", platform:"PC", needsEmulator:false, emulatorImage:"",
+  linkApk:"", linkObb:"", linkData:"", platform:"PC", needsEmulator:false, emulatorImage:"", emulatorCategory:"",
   emulatorLink:"", firmwareLink:"", prodKeysLink:"", trending:false };
 let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settings:{}, payments:[],
   stats:{ visits:0, dailyDownloads:{}, downloadsLog:[] },
@@ -174,6 +175,7 @@ function syncGameFormFromDom(){
   if(g("g-link-data")) f.linkData = g("g-link-data").value;
   if(g("g-platform")) f.platform = g("g-platform").value;
   if(g("g-emu-link")) f.emulatorLink = g("g-emu-link").value;
+  if(g("g-emulator-category")) f.emulatorCategory = g("g-emulator-category").value;
   if(g("g-firmware-link")) f.firmwareLink = g("g-firmware-link").value;
   if(g("g-prodkeys-link")) f.prodKeysLink = g("g-prodkeys-link").value;
   if(g("g-needs-emu")) f.needsEmulator = g("g-needs-emu").checked;
@@ -334,6 +336,11 @@ function renderGames(){
       <label class="flex items-center gap-2 mb-3 text-xs font-semibold text-slate-300">
         <input id="g-needs-emu" type="checkbox" ${f.needsEmulator?"checked":""} /> Game inahitaji Emulator</label>
       ${f.needsEmulator ? `
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina ya Emulator (Category)</span>
+        <select id="g-emulator-category" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          <option value="" ${!f.emulatorCategory?"selected":""}>-- Chagua Aina ya Emulator --</option>
+          ${EMULATOR_CATEGORIES.map(ec=>`<option value="${ec}" ${f.emulatorCategory===ec?"selected":""}>${ec}</option>`).join("")}
+        </select></label>
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Emulator</span>
         <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer">
           <span id="g-emu-image-label">${f.emulatorImage ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
@@ -359,7 +366,7 @@ function renderGames(){
         ${state.games.map(g => `
           <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2 ${state.editingGameId===g.id ? "ring-1 ring-emerald-400" : ""}">
             ${g.image ? `<img src="${g.image}" class="w-10 h-10 rounded object-cover"/>` : `<div class="w-10 h-10 rounded bg-slate-800 flex items-center justify-center text-slate-600">🎮</div>`}
-            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(g.title)}</p><p class="text-[10px] text-slate-500">${esc(g.category)} · ${esc(g.genre||"—")} · ${esc(g.platform)}${g.coinCost ? ` · 🪙${esc(g.coinCost)}` : ""}${!g.linkApk ? ` · <span class="text-rose-400">bila link</span>` : ""}</p></div>
+            <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(g.title)}</p><p class="text-[10px] text-slate-500">${esc(g.category)} · ${esc(g.genre||"—")} · ${esc(g.platform)}${g.coinCost ? ` · 🪙${esc(g.coinCost)}` : ""}${g.needsEmulator && g.emulatorCategory ? ` · 🕹️${esc(g.emulatorCategory)}` : ""}${!g.linkApk ? ` · <span class="text-rose-400">bila link</span>` : ""}</p></div>
             <button data-action="edit-game" data-id="${g.id}" title="Hariri" class="p-1.5 rounded text-slate-600 hover:text-emerald-400">✏️</button>
             <button data-action="toggle-trending" data-id="${g.id}" title="Trending" class="p-1.5 rounded ${g.trending ? "text-rose-400 bg-rose-400/10" : "text-slate-600"}">🔥</button>
             <button data-action="remove-game" data-id="${g.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
@@ -688,6 +695,7 @@ document.addEventListener("click", async (e) => {
       f.emulatorLink = normalizeUrl(document.getElementById("g-emu-link").value.trim());
       f.firmwareLink = normalizeUrl(document.getElementById("g-firmware-link").value.trim());
       f.prodKeysLink = normalizeUrl(document.getElementById("g-prodkeys-link").value.trim());
+      f.emulatorCategory = document.getElementById("g-emulator-category").value;
     }
     f.trending = document.getElementById("g-trending").checked;
     if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
