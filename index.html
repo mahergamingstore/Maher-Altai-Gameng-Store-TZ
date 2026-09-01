@@ -78,7 +78,8 @@ const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
 
 const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
-  spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages" };
+  spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
+  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -113,12 +114,16 @@ const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Rac
 const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
 const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK Android Game","Yuzu/Sudachi/Eden","RPCS3 (PS3)","Xenia (Xbox360)","Cemu (WiiU)","Vita3K (PS3 Lite)"];
 const EMULATOR_ICON = { "PSP":"🎮","WinLator":"🍷","Wii":"🎱","GameCube":"🟣","PC Game":"🖥️","APK Android Game":"📱","Yuzu/Sudachi/Eden":"🧊","RPCS3 (PS3)":"🎯","Xenia (Xbox360)":"❎","Cemu (WiiU)":"🅾️","Vita3K (PS3 Lite)":"🎴" };
+const MARKET_CATEGORIES = ["Device","Console","PS (PlayStation)","Gaming Setup","Laptop","Simu (Phone)","Vifaa (Accessories)","Monitor","Keyboard & Mouse","Headset","Nyingine"];
+const MARKET_ICON = { "Device":"📟","Console":"🎮","PS (PlayStation)":"🕹️","Gaming Setup":"🖥️","Laptop":"💻","Simu (Phone)":"📱","Vifaa (Accessories)":"🔌","Monitor":"🖥️","Keyboard & Mouse":"⌨️","Headset":"🎧","Nyingine":"📦" };
 
 /* ================= state ================= */
 let state = {
   user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", emulatorFilter: "Zote", searchQuery: "", viewMode: "vertical",
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
   spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
+  marketplace: [], vipPlans: [], videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 }, adminAdvice: [],
+  marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" },
   modal: null,
 };
 
@@ -144,13 +149,23 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c,sp,cp] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
+    getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
   state.spinConfig=sp; state.coinPackages=cp;
+  state.marketplace=mk; state.vipPlans=vp; state.videoAd=va; state.adminAdvice=adv;
+  if(state.user){
+    const users = await getJSON(K.users, []);
+    const fresh = users.find(u=>u.phone===state.user.phone);
+    if(fresh) state.user = fresh;
+  }
+}
+function isUserVip(){
+  return !!(state.user && state.user.vipExpiresAt && state.user.vipExpiresAt > Date.now());
 }
 
 async function bumpVisit(){
@@ -209,7 +224,7 @@ function renderHeader(){
 }
 
 function renderNav(){
-  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["ads","📣 Matangazo"],["tournament","🏆 Tournament"]];
+  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["market","🛍️ Masoko"],["ads","📣 Matangazo"]];
   document.getElementById("nav-tabs").innerHTML = tabs.map(([key,label]) => `
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
@@ -224,7 +239,7 @@ function gameCard(g){
   const coinReq = myPay.find(p=>p.type==="coin" && p.targetId===g.id);
   const coinApproved = coinReq && coinReq.status==="approved";
   const isFree = g.category === "Bure";
-  const unlocked = isFree || cashApproved || coinApproved;
+  const unlocked = isFree || cashApproved || coinApproved || isUserVip();
 
   const downloadLinks = [
     { kind:"apk", label:"APK", url:g.linkApk, color:"bg-rose-500 hover:bg-rose-400" },
@@ -235,10 +250,16 @@ function gameCard(g){
   let actions = "";
   if(unlocked){
     if(state.user){
+      const needsAdGate = !isUserVip() && !state.user.adsBlocked && state.videoAd && state.videoAd.videoUrl;
       /* real <a> tags = genuine link clicks, exactly like the Emulator link — this is what
-         makes them open reliably (a JS-triggered window.open() can get silently blocked). */
+         makes them open reliably (a JS-triggered window.open() can get silently blocked).
+         When an ad-gate is required we instead open a small modal first; the real link only
+         appears (as a real <a>) after the countdown finishes, so it stays just as reliable. */
       actions = downloadLinks.length > 0
-        ? `<div class="mt-3 flex flex-col gap-1.5">${downloadLinks.map(d => `<a href="${d.url}" target="_blank" rel="noreferrer" data-action="download-log" data-id="${g.id}" data-kind="${d.kind}" class="w-full flex items-center justify-center gap-2 ${d.color} text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ ${d.label}</a>`).join("")}</div>`
+        ? `<div class="mt-3 flex flex-col gap-1.5">${downloadLinks.map(d => needsAdGate
+            ? `<button data-action="open-adgate" data-id="${g.id}" data-kind="${d.kind}" class="w-full flex items-center justify-center gap-2 ${d.color} text-slate-950 text-xs font-bold py-2 rounded-lg">📺 ${d.label}</button>`
+            : `<a href="${d.url}" target="_blank" rel="noreferrer" data-action="download-log" data-id="${g.id}" data-kind="${d.kind}" class="w-full flex items-center justify-center gap-2 ${d.color} text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ ${d.label}</a>`
+          ).join("")}</div>`
         : `<p class="mt-3 text-[11px] text-slate-500 text-center">Link ya download bado haijawekwa na admin.</p>`;
     } else {
       actions = `<button data-action="download" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-lg">⬇ Download</button>`;
@@ -316,27 +337,6 @@ function viewModeToggleHtml(){
     <span class="text-[11px] text-slate-500 mr-1">Mpangilio:</span>
     <button data-view-mode="vertical" class="chip flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${state.viewMode==="vertical" ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}">📋 Wima</button>
     <button data-view-mode="horizontal" class="chip flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${state.viewMode==="horizontal" ? "bg-amber-500 text-slate-950" : "bg-slate-900 text-slate-400"}">↔️ Ulalo</button>
-  </div>`;
-}
-
-/* ================= tournament card ================= */
-function tournamentCard(t){
-  const myPay = myPaymentsFor();
-  const approved = myPay.some(p=>p.type==="tournament" && p.targetId===t.id && p.status==="approved");
-  const pending = myPay.some(p=>p.type==="tournament" && p.targetId===t.id && p.status==="pending");
-  let action;
-  if(approved) action = `<div class="flex items-center gap-2 text-emerald-400 text-xs font-bold">✅ Umeshajiunga</div>`;
-  else if(pending) action = `<div class="flex items-center gap-2 text-slate-400 text-xs font-bold">⏱ Inasubiri idhini ya admin</div>`;
-  else action = `<button data-action="join-tournament" data-id="${t.id}" class="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 text-xs font-bold py-2 rounded-lg">Jiunge Sasa</button>`;
-  return `
-  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 glow-card">
-    <div class="flex items-center justify-between mb-2">
-      <h4 class="font-bold text-sm">${esc(t.name)}</h4>
-      ${badge(t.type==="league" ? "Ligi" : "Knockout", t.type==="league" ? "amber" : "violet")}
-    </div>
-    <p class="text-xs text-slate-400 mb-3">${esc(t.description)}</p>
-    <p class="text-xs text-slate-500 mb-3">Ada ya kujiunga: <span class="text-amber-300 font-semibold">${esc(t.fee)}</span></p>
-    ${action}
   </div>`;
 }
 
@@ -475,12 +475,68 @@ function renderAds(){
   </div>`;
 }
 
-function renderTournament(){
+/* ================= Marketplace: peer-to-peer product listings ================= */
+function marketCard(m){
   return `
-  <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🏆</span><h2 class="font-bold">Tournament za Mpira</h2></div>
-  <p class="text-slate-500 text-xs mb-4">Ligi na Knockout — jiunge kwa kulipia ada ya usajili.</p>
-  ${state.tournaments.length===0 ? `<p class="text-slate-500 text-sm">Hakuna tournament kwa sasa. Rudi tena baadaye.</p>`
-    : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${state.tournaments.map(tournamentCard).join("")}</div>`}`;
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden glow-card">
+    <div class="relative aspect-video bg-slate-800">
+      ${m.image ? `<img src="${m.image}" class="w-full h-full object-cover"/>` : `<div class="w-full h-full flex items-center justify-center text-3xl">📦</div>`}
+      <div class="absolute top-2 right-2">${badge(`${MARKET_ICON[m.category]||"📦"} ${m.category}`,"violet")}</div>
+    </div>
+    <div class="p-3">
+      <h4 class="font-bold text-sm truncate">${esc(m.productName)}</h4>
+      <p class="text-amber-300 font-extrabold text-sm mt-0.5">💰 ${esc(m.price)}</p>
+      <a href="tel:${esc(m.sellerPhone)}" class="mt-3 w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-2 rounded-lg">📞 ${esc(m.sellerPhone)}</a>
+    </div>
+  </div>`;
+}
+
+function marketFormHtml(){
+  const f = state.marketForm;
+  return `
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6">
+    <h3 class="font-bold mb-3">➕ Weka Bidhaa Yako Iuzwe</h3>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Bidhaa</span>
+      <input id="mk-name" value="${esc(f.productName)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano: PS4 Slim 500GB" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Bei</span>
+      <input id="mk-price" value="${esc(f.price)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano 350,000 TZS" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Namba yako ya Simu (ya kibiashara)</span>
+      <input id="mk-phone" value="${esc(f.sellerPhone)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="07xx xxx xxx" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina ya Bidhaa</span>
+      <select id="mk-category" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+        ${MARKET_CATEGORIES.map(c=>`<option ${f.category===c?"selected":""}>${c}</option>`).join("")}
+      </select></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Bidhaa</span>
+      <label class="flex items-center justify-center gap-2 border border-dashed border-slate-700 rounded-lg py-4 text-sm text-slate-400 cursor-pointer hover:border-amber-400">
+        <span id="mk-image-label">${f.image ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
+        <input id="mk-image" type="file" accept="image/*" class="hidden" />
+      </label></label>
+    <p id="mk-error" class="text-rose-400 text-xs mb-2"></p>
+    <button data-action="market-submit" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
+    <p class="text-[11px] text-slate-500 mt-2">Admin atahakiki kabla bidhaa yako haijaonekana hadharani.</p>
+  </div>`;
+}
+
+function renderMarket(){
+  const approved = state.marketplace.filter(m=>m.status==="approved");
+  const mine = state.user ? state.marketplace.filter(m=>m.userPhone===state.user.phone && m.status!=="approved") : [];
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-violet-400">🛍️</span><h2 class="font-bold">Masoko — Uza / Nunua Vifaa</h2></div>
+  <p class="text-slate-500 text-xs mb-4">Weka bidhaa yako iuzwe, au wasiliana moja kwa moja na muuzaji kwa namba yake ya simu.</p>
+  ${!state.user ? `<p class="text-amber-300 text-xs mb-4">Ingia kwanza ili uweze kuweka bidhaa yako.</p>` : marketFormHtml()}
+  ${mine.length>0 ? `
+  <div class="mb-6">
+    <p class="text-xs font-bold text-slate-400 mb-2">Bidhaa Zako Zinazosubiri/Zilizokataliwa</p>
+    <div class="space-y-2">
+      ${mine.map(m=>`<div class="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg p-2 text-xs">
+        <span>${esc(m.productName)} — ${esc(m.price)}</span>
+        <span class="${m.status==="rejected" ? "text-rose-400" : "text-amber-300"} font-bold">${m.status==="rejected" ? "Imekataliwa" : "Inasubiri Idhini"}</span>
+      </div>`).join("")}
+    </div>
+  </div>` : ""}
+  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">🗂️</span><h3 class="font-bold text-sm">Bidhaa Zilizopo (${approved.length})</h3></div>
+  ${approved.length===0 ? `<p class="text-slate-500 text-sm">Hakuna bidhaa bado. Kuwa wa kwanza kuuza!</p>`
+    : `<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${approved.map(marketCard).join("")}</div>`}`;
 }
 
 /* ================= Coins: balance, buy packages, spin wheel ================= */
@@ -540,14 +596,25 @@ function renderCoins(){
     <p class="text-slate-500 text-sm mb-4">Ingia kwanza ili uone coins zako, ununue coins, au ku-spin.</p>
     <button data-action="open-auth" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Ingia / Jisajili</button>`;
   }
+  const vipActive = isUserVip();
   return `
   <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🪙</span><h2 class="font-bold">Coins Zangu</h2></div>
   <div class="bg-gradient-to-br from-amber-500/15 to-violet-500/15 border border-slate-800 rounded-2xl p-6 text-center mb-6">
     <p class="text-[11px] text-slate-400">Salio lako la sasa</p>
     <p class="text-4xl font-extrabold text-amber-300 mt-1">🪙 ${state.user.coins||0}</p>
+    ${vipActive ? `<p class="text-[11px] text-emerald-400 font-bold mt-2">🌟 ${esc(state.user.vipTier||"VIP")} hai hadi ${new Date(state.user.vipExpiresAt).toLocaleDateString()}</p>` : ""}
   </div>
 
-  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">🛍️</span><h2 class="font-bold">Nunua Coins</h2></div>
+  <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🌟</span><h2 class="font-bold">SVIP — Game Zote Bure</h2></div>
+  <p class="text-slate-500 text-xs mb-4">${vipActive ? "SVIP yako iko hai — unapata game zote bila kulipia hadi tarehe iliyoonyeshwa juu." : "Lipa mara moja, pata game ZOTE bila malipo ya ziada kwa muda utakaowekewa."}</p>
+  ${state.vipPlans.length===0 ? `<p class="text-slate-500 text-sm mb-8">Bado admin hajaweka mipango ya VIP.</p>`
+    : `<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">${state.vipPlans.map(vipPlanCard).join("")}</div>`}
+
+  <div class="flex items-center gap-2 mb-1"><span class="text-rose-400">🚫</span><h2 class="font-bold">Zuia Matangazo</h2></div>
+  <p class="text-slate-500 text-xs mb-4">${state.user.adsBlocked ? "Umeshazuia matangazo — unapakua moja kwa moja bila kusubiri tangazo." : "Nunua kwa coins ili usisubiri tangazo la video kila unapopakua."}</p>
+  ${blockAdsHtml()}
+
+  <div class="flex items-center gap-2 mb-3 mt-8"><span class="text-emerald-400">🛍️</span><h2 class="font-bold">Nunua Coins</h2></div>
   ${state.coinPackages.length===0 ? `<p class="text-slate-500 text-sm mb-8">Bado admin hajaweka pakiti za coins.</p>`
     : `<div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">${state.coinPackages.map(coinPackageCard).join("")}</div>`}
 
@@ -556,13 +623,32 @@ function renderCoins(){
   ${spinWheelHtml()}`;
 }
 
+function vipPlanCard(plan){
+  return `
+  <button data-action="buy-vip" data-id="${plan.id}" class="bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-4 text-center glow-card">
+    <p class="text-2xl">🌟</p>
+    <p class="font-extrabold text-sm text-amber-300">${esc(plan.name)}</p>
+    <p class="text-[11px] text-slate-400 mt-1">${esc(plan.durationDays)} siku</p>
+    <p class="text-sm font-bold mt-1">${esc(plan.price)}</p>
+  </button>`;
+}
+
+function blockAdsHtml(){
+  const cost = state.videoAd.blockAdsCost || 0;
+  if(state.user.adsBlocked){
+    return `<div class="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-8">✅ Matangazo yamezuiwa kwenye akaunti yako</div>`;
+  }
+  const canBuy = (state.user.coins||0) >= cost && cost > 0;
+  return `<button data-action="buy-blockads" ${canBuy ? "" : "disabled"} class="mb-8 px-5 py-2.5 rounded-full font-bold text-sm ${canBuy ? "bg-rose-500 hover:bg-rose-400 text-slate-950" : "bg-slate-800 text-slate-500 cursor-not-allowed"}">🚫 Zuia Matangazo (🪙 ${cost})</button>`;
+}
+
 function _renderApp(){
   const app = document.getElementById("app");
   if(state.tab==="home") app.innerHTML = renderHome();
   else if(state.tab==="store") app.innerHTML = renderStore();
   else if(state.tab==="coins") app.innerHTML = renderCoins();
   else if(state.tab==="ads") app.innerHTML = renderAds();
-  else if(state.tab==="tournament") app.innerHTML = renderTournament();
+  else if(state.tab==="market") app.innerHTML = renderMarket();
   renderHeader();
   renderNav();
   if(state.tab==="ads") startAdTimers();
@@ -619,7 +705,7 @@ async function claimCoin(ad, kind){
 
 /* ================= modals ================= */
 function openModal(modal){ state.modal = modal; renderModal(); }
-function closeModal(){ state.modal = null; renderModal(); }
+function closeModal(){ clearInterval(adGateTimer); state.modal = null; renderModal(); }
 
 function renderModal(){
   const root = document.getElementById("modal-root");
@@ -628,6 +714,57 @@ function renderModal(){
   if(state.modal.type === "pay") root.innerHTML = payModalHtml(state.modal.target, state.modal.targetType, state.modal.method || "cash");
   if(state.modal.type === "coin-redeem") root.innerHTML = coinRedeemModalHtml(state.modal.request);
   if(state.modal.type === "buycoins") root.innerHTML = buyCoinsModalHtml(state.modal.pkg);
+  if(state.modal.type === "adgate"){ root.innerHTML = adgateModalHtml(state.modal.game, state.modal.kind, state.modal.url, state.modal.label); startAdGateCountdown(); }
+}
+
+/* ================= ad-gate: must watch a video ad before downloading (unless VIP / ads blocked) ================= */
+let adGateTimer = null;
+function adgateModalHtml(game, kind, url, label){
+  const va = state.videoAd || {};
+  const seconds = Math.max(3, Number(va.watchSeconds||10));
+  const isYoutube = va.videoUrl && /youtube\.com|youtu\.be/.test(va.videoUrl);
+  let ytId = "";
+  if(isYoutube){
+    const m = va.videoUrl.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
+    ytId = m ? m[1] : "";
+  }
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-5 relative shadow-2xl">
+      <h3 class="font-bold text-lg mb-1 text-center">📺 Tazama Tangazo Kabla ya Download</h3>
+      <p class="text-[11px] text-slate-500 mb-3 text-center">${esc(game.title)} — ${esc(label)}</p>
+      <div class="rounded-lg overflow-hidden bg-slate-900 aspect-video mb-3 flex items-center justify-center">
+        ${isYoutube && ytId ? `<iframe class="w-full h-full" src="https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1" allow="autoplay; encrypted-media" allowfullscreen></iframe>`
+          : va.videoUrl ? `<video class="w-full h-full" src="${va.videoUrl}" autoplay muted playsinline loop></video>`
+          : `<span class="text-4xl">📺</span>`}
+      </div>
+      <p class="text-center text-xs text-slate-400 mb-3">Download itafunguka baada ya sekunde <span id="adgate-count" class="text-amber-300 font-bold">${seconds}</span>...</p>
+      <div id="adgate-cta"></div>
+      <p class="text-[11px] text-slate-500 mt-3 text-center">Nunua "Zuia Matangazo" kwenye tab ya Coins ili usisubiri hii tena.</p>
+    </div>
+  </div>`;
+}
+function startAdGateCountdown(){
+  clearInterval(adGateTimer);
+  const va = state.videoAd || {};
+  let remaining = Math.max(3, Number(va.watchSeconds||10));
+  const countEl = () => document.getElementById("adgate-count");
+  const ctaEl = () => document.getElementById("adgate-cta");
+  adGateTimer = setInterval(() => {
+    remaining--;
+    const c = countEl();
+    if(c) c.textContent = Math.max(0, remaining);
+    if(remaining <= 0){
+      clearInterval(adGateTimer);
+      const cta = ctaEl();
+      const modal = state.modal;
+      if(cta && modal){
+        cta.innerHTML = `
+          <a href="${modal.url}" target="_blank" rel="noreferrer" data-action="adgate-download" data-id="${modal.game.id}" data-kind="${modal.kind}" class="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-bold py-2.5 rounded-lg">⬇ Endelea Kudownload</a>
+          <button data-action="close-modal" class="w-full mt-2 text-[11px] text-slate-500">Ghairi</button>`;
+      }
+    }
+  }, 1000);
 }
 
 function authModalHtml(mode){
@@ -716,6 +853,33 @@ function buyCoinsModalHtml(pkg){
   </div>`;
 }
 
+function buyVipModalHtml(plan){
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+      <button data-action="close-modal" class="absolute top-3 right-3 text-slate-500 hover:text-slate-200 text-lg">✕</button>
+      <h3 class="font-bold text-lg mb-1">🌟 Nunua ${esc(plan.name)}</h3>
+      <p class="text-xs text-slate-500 mb-4">Muda: <span class="text-amber-300 font-bold">${esc(plan.durationDays)} siku</span> — ${esc(plan.price)}</p>
+      <div class="bg-slate-900 border border-slate-800 rounded-lg p-3 mb-4 text-sm">
+        <p class="text-slate-400 text-xs mb-1">Lipia kupitia:</p>
+        <p class="font-semibold text-amber-300">${esc(state.settings.paymentNetwork||"—")}</p>
+        <p class="font-mono text-slate-100 text-base">${esc(state.settings.paymentPhone||"Bado haijawekwa na admin")}</p>
+      </div>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Namba uliyotumia kulipia</span>
+        <input id="pay-phone" class="w-full bg-slate-900/80 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="07xx xxx xxx" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya muamala (screenshot)</span>
+        <label class="flex items-center justify-center gap-2 border border-dashed border-slate-700 rounded-lg py-4 text-sm text-slate-400 cursor-pointer hover:border-amber-400">
+          <span id="pay-file-label">⬆ Bofya ku-upload picha</span>
+          <input id="pay-file" type="file" accept="image/*" class="hidden" />
+        </label>
+      </label>
+      <p id="pay-error" class="text-rose-400 text-xs mb-2"></p>
+      <button data-action="buyvip-submit" data-id="${plan.id}" class="w-full bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
+      <p class="text-[11px] text-slate-500 mt-3">Admin atakapohakiki malipo yako, ${esc(plan.name)} itawashwa kwenye akaunti yako.</p>
+    </div>
+  </div>`;
+}
+
 function coinRedeemModalHtml(request){
   return `
   <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
@@ -774,6 +938,12 @@ document.addEventListener("change", (e) => {
     document.getElementById("pay-file-label").textContent = "Inasindika picha...";
     compressImage(f, (d) => { payScreenshotData = d; document.getElementById("pay-file-label").textContent = "Picha imechaguliwa ✔"; });
   }
+  if(e.target.id === "mk-image"){
+    const f = e.target.files[0];
+    if(!f) return;
+    document.getElementById("mk-image-label").textContent = "Inasindika picha...";
+    compressImage(f, (d) => { state.marketForm.image = d; const lbl = document.getElementById("mk-image-label"); if(lbl) lbl.textContent = "Picha imewekwa ✔"; });
+  }
 });
 
 /* search input (live) */
@@ -784,15 +954,17 @@ document.addEventListener("input", (e) => {
 /* ================= chat bot: ALTAImaher robot ================= */
 function replyFromBot(text){
   const t = text.toLowerCase();
-  if(t.includes("bei")||t.includes("lipia")||t.includes("malipo")) return "Kwa game za kulipia: bonyeza 'Lipa Pesa', tuma namba uliyotumia kulipia na picha ya muamala. Admin akihakiki, download itafunguka. Baadhi ya game pia zinaweza kufunguliwa kwa Coins🪙.";
-  if(t.includes("coin")) return "Unapata coin 5🪙 ukitazama tangazo kwa sekunde 5, na coin 5🪙 nyingine ukibonyeza link ya tangazo. Coins zikitosha unaweza kufungua baadhi ya game bila pesa, kwa kuomba code kwa admin.";
-  if(t.includes("emulator")) return "Baadhi ya game zinahitaji emulator kucheza. Kwenye kadi ya game utaona kiungo cha 'Pata Emulator' kama inahitajika.";
-  if(t.includes("tournament")||t.includes("ligi")||t.includes("mashindano")) return "Tournament zina ligi na knockout. Jiunge kwa kulipia ada kupitia namba tuliyoweka, kisha tuma uthibitisho wa malipo.";
+  if(t.includes("bei")||t.includes("lipia")||t.includes("malipo")) return "Kwa game za kulipia: bonyeza 'Lipa Pesa', tuma namba uliyotumia kulipia na picha ya muamala. Admin akihakiki, download itafunguka. Baadhi ya game pia zinaweza kufunguliwa kwa Coins🪙 au VIP.";
+  if(t.includes("coin")) return "Unapata coin 5🪙 ukitazama tangazo kwa sekunde 5, na coin 5🪙 nyingine ukibonyeza link ya tangazo. Unaweza pia kununua coins moja kwa moja kwenye tab ya 'Coins'. Coins zinaweza kutumika kufungua game, ku-spin, au kuzuia matangazo.";
+  if(t.includes("emulator")) return "Baadhi ya game zinahitaji emulator kucheza (mfano PSP, Yuzu, RPCS3, Cemu, Xenia, WinLator, n.k). Kwenye kadi ya game utaona aina ya emulator inayohitajika na viungo vyake.";
+  if(t.includes("soko")||t.includes("uza")||t.includes("bidhaa")||t.includes("shopping")) return "Kwenye tab ya '🛍️ Masoko' unaweza kuweka bidhaa yako (kifaa, console, PS, gaming setup n.k) iuzwe — jaza jina, bei, namba yako ya simu, aina, na picha. Admin atahakiki kabla haijaonekana kwa umma.";
+  if(t.includes("vip")||t.includes("svip")||t.includes("altai super")) return "SVIP (VIP, VIP Lite, ALTAI SUPER) inakupa game ZOTE bila malipo ya ziada kwa muda uliowekwa — pia hupitishi matangazo kabla ya kudownload. Nunua kwenye tab ya 'Coins'.";
+  if(t.includes("tangazo")||t.includes("ads")||t.includes("advert")) return "Baadhi ya downloads zinahitaji kutazama tangazo la video kwanza (sekunde chache). Ukinunua 'Zuia Matangazo' kwa coins, au ukiwa VIP, hutasubiri tangazo tena.";
   if(t.includes("akaunti")||t.includes("password")||t.includes("simu")) return "Ukibadilisha simu, ingia tu na namba ya simu na password uliyosajili — akaunti yako, coins na taarifa zitarudi bila kupotea.";
-  if(t.includes("download")||t.includes("pakua")) return "Game za Bure unaweza kudownload moja kwa moja baada ya kuingia. Game za kulipia zinahitaji uthibitisho wa malipo au Coins za kutosha.";
-  if(t.includes("category")||t.includes("aina")) return "Unaweza kuchagua category ya game (Action, Sport, Adventure, FPS Shooter, Simulator/Racing, Tactical Shooter) kwenye Home au Duka.";
-  if(t.includes("habari")||t.includes("mambo")||t.includes("hujambo")) return "Nzuri sana! Mimi ni ALTAImaher robot 🤖 — nipo hapa kukusaidia na MaherGamingStore. Uliza chochote kuhusu game, malipo au coins.";
-  return "Nipo hapa kukusaidia 🤖. Unaweza kuniuliza kuhusu: malipo, coins, tournament, emulator, category, au jinsi ya ku-download game.";
+  if(t.includes("download")||t.includes("pakua")) return "Game za Bure unaweza kudownload moja kwa moja baada ya kuingia. Game za kulipia zinahitaji uthibitisho wa malipo, Coins za kutosha, au VIP.";
+  if(t.includes("category")||t.includes("aina")) return "Unaweza kuchagua category ya game (Action, Sport, Adventure, FPS Shooter, Simulator/Racing, Tactical Shooter) na aina ya Emulator kwenye Home au Duka.";
+  if(t.includes("habari")||t.includes("mambo")||t.includes("hujambo")) return "Nzuri sana! Mimi ni ALTAImaher robot 🤖 — nipo hapa kukusaidia na MaherGamingStore. Uliza chochote kuhusu game, malipo, coins, VIP, au Masoko.";
+  return "Nipo hapa kukusaidia 🤖. Unaweza kuniuliza kuhusu: malipo, coins, VIP/SVIP, matangazo, Masoko ya kuuza vifaa, emulator, category, au jinsi ya ku-download game.";
 }
 
 let chatMsgs = [{from:"bot", text:"Habari! Mimi ni ALTAImaher robot 🤖. Nikusaidiaje leo?"}];
@@ -898,6 +1070,26 @@ document.addEventListener("click", async (e) => {
     logDownload(g, g.category==="Bure" ? "free" : (paidUnlock ? "paid" : "free"));
     return;
   }
+  if(action === "adgate-download"){
+    /* same as download-log — fires after the ad-gate countdown, once the real link is clicked */
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!g || !state.user) return;
+    const paidUnlock = state.payments.some(p=>p.userPhone===state.user.phone && (p.type==="game"||p.type==="coin") && p.targetId===g.id && p.status==="approved");
+    logDownload(g, g.category==="Bure" ? "free" : (paidUnlock ? "paid" : "free"));
+    closeModal();
+    return;
+  }
+  if(action === "open-adgate"){
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!g || !state.user) return;
+    const kind = act.dataset.kind;
+    const urlMap = { apk: g.linkApk, obb: g.linkObb, data: g.linkData };
+    const labelMap = { apk: "APK", obb: "OBB", data: "Data" };
+    const url = urlMap[kind];
+    if(!url) return;
+    openModal({ type:"adgate", game:g, kind, url, label: labelMap[kind] });
+    return;
+  }
 
   if(action === "buy"){
     const g = state.games.find(x=>x.id===act.dataset.id);
@@ -917,6 +1109,29 @@ document.addEventListener("click", async (e) => {
     if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
     const pkg = state.coinPackages.find(x=>x.id===act.dataset.id);
     if(pkg) openModal({type:"buycoins", pkg});
+    return;
+  }
+
+  if(action === "buy-vip"){
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    const plan = state.vipPlans.find(x=>x.id===act.dataset.id);
+    if(plan) openModal({type:"pay", target:plan, targetType:"vip", method:"cash"});
+    return;
+  }
+
+  if(action === "buy-blockads"){
+    if(!state.user) return;
+    const cost = Number(state.videoAd.blockAdsCost||0);
+    if(!cost || (state.user.coins||0) < cost || state.user.adsBlocked) return;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){
+      users[uIdx].coins = Math.max(0, (users[uIdx].coins||0) - cost);
+      users[uIdx].adsBlocked = true;
+      const ok = await setJSON(K.users, users);
+      if(ok) state.user = users[uIdx];
+    }
+    await refreshAll(); renderApp();
     return;
   }
 
@@ -979,10 +1194,21 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  if(action === "join-tournament"){
-    const t = state.tournaments.find(x=>x.id===act.dataset.id);
-    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
-    openModal({type:"pay", target:t, targetType:"tournament", method:"cash"});
+  if(action === "market-submit"){
+    const errorEl = document.getElementById("mk-error");
+    const f = state.marketForm;
+    f.productName = document.getElementById("mk-name").value.trim();
+    f.price = document.getElementById("mk-price").value.trim();
+    f.sellerPhone = document.getElementById("mk-phone").value.trim();
+    f.category = document.getElementById("mk-category").value;
+    if(!f.productName || !f.price || !f.sellerPhone || !f.image){ errorEl.textContent = "Jaza taarifa zote na uweke picha ya bidhaa."; return; }
+    const listing = { id: uid(), userPhone: state.user.phone, username: state.user.username,
+      productName: f.productName, price: f.price, sellerPhone: f.sellerPhone, category: f.category,
+      image: f.image, status: "pending", submittedAt: Date.now() };
+    const ok = await setJSON(K.marketplace, [...state.marketplace, listing]);
+    if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
+    state.marketForm = { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" };
+    await refreshAll(); renderApp();
     return;
   }
 
@@ -999,11 +1225,12 @@ document.addEventListener("click", async (e) => {
     const type = act.dataset.type;
     const id = act.dataset.id;
     const method = act.dataset.method || "cash";
-    const target = type==="game" ? state.games.find(x=>x.id===id) : state.tournaments.find(x=>x.id===id);
+    const target = type==="game" ? state.games.find(x=>x.id===id) : type==="vip" ? state.vipPlans.find(x=>x.id===id) : state.tournaments.find(x=>x.id===id);
     const payments = await getJSON(K.payments, []);
-    const entry = { id: uid(), type, targetId: id, targetName: target.title||target.name, userPhone: state.user.phone,
+    const entry = { id: uid(), type, targetId: id, targetName: target.name||target.title, userPhone: state.user.phone,
       username: state.user.username, payerPhone, screenshot: payScreenshotData, status:"pending", submittedAt: Date.now(),
-      method, spinResult: method==="spin" ? state.lastSpin : null };
+      method, spinResult: method==="spin" ? state.lastSpin : null,
+      vipDurationDays: type==="vip" ? Number(target.durationDays||0) : undefined };
     const ok = await setJSON(K.payments, [...payments, entry]);
     if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
     payScreenshotData = null;

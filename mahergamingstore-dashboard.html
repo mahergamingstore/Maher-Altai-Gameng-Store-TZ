@@ -35,7 +35,8 @@ const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
 
 const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
-  spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages" };
+  spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
+  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -141,6 +142,12 @@ let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settin
   coinPackages: [],
   pkgForm: { coins:"", price:"", offer:false },
   coinCreditDrafts: {},
+  marketplace: [],
+  vipPlans: [],
+  vipForm: { name:"", price:"", durationDays:"" },
+  videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 },
+  adminAdvice: [],
+  noteForm: { text:"" },
 };
 
 /* ================= focus-preserving render wrapper ================= */
@@ -212,17 +219,36 @@ function syncPkgFormFromDom(){
   if(g("pkg-price")) f.price = g("pkg-price").value;
   if(g("pkg-offer")) f.offer = g("pkg-offer").checked;
 }
-function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); syncSpinFormFromDom(); syncPkgFormFromDom(); }
+function syncVipFormFromDom(){
+  const f = state.vipForm;
+  const g = (id) => document.getElementById(id);
+  if(g("vip-name")) f.name = g("vip-name").value;
+  if(g("vip-price")) f.price = g("vip-price").value;
+  if(g("vip-days")) f.durationDays = g("vip-days").value;
+}
+function syncVideoAdFormFromDom(){
+  const va = state.videoAd;
+  const g = (id) => document.getElementById(id);
+  if(g("va-url")) va.videoUrl = g("va-url").value;
+  if(g("va-seconds")) va.watchSeconds = g("va-seconds").value;
+  if(g("va-blockcost")) va.blockAdsCost = g("va-blockcost").value;
+}
+function syncNoteFormFromDom(){
+  const g = (id) => document.getElementById(id);
+  if(g("note-text")) state.noteForm.text = g("note-text").value;
+}
+function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); syncSpinFormFromDom(); syncPkgFormFromDom(); syncVipFormFromDom(); syncVideoAdFormFromDom(); syncNoteFormFromDom(); }
 let skipFormSync = false; // set true right before a render that must NOT pull stale values back from the old DOM (e.g. loading a game into the form to edit it)
 
 let spinConfigLoaded = false; // spinConfig is only pulled from Firebase ONCE — after that it's owned by
 // the on-screen form (like gameForm/adForm), so periodic refreshes never wipe an image you just
 // uploaded before you hit "Hifadhi Spin". This was the cause of uploaded pictures "disappearing".
 async function refresh(){
-  const [u,g,a,t,s,p,st,sp,cp] = await Promise.all([
+  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv] = await Promise.all([
     getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
+    getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
   ]);
   state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
   if(!spinConfigLoaded){
@@ -232,7 +258,12 @@ async function refresh(){
     spinConfigLoaded = true;
   }
   state.coinPackages = cp || [];
+  state.marketplace = mk || [];
+  state.vipPlans = vp || [];
+  if(!videoAdLoaded){ state.videoAd = va && typeof va === "object" ? va : { videoUrl:"", watchSeconds:10, blockAdsCost:0 }; videoAdLoaded = true; }
+  state.adminAdvice = adv || [];
 }
+let videoAdLoaded = false; // same reasoning as spinConfigLoaded — protects the settings form from being wiped mid-edit
 
 function badge(text, tone){
   const tones = { cyan:"bg-cyan-400/10 text-cyan-300 border-cyan-400/30", violet:"bg-violet-400/10 text-violet-300 border-violet-400/30",
@@ -242,11 +273,12 @@ function badge(text, tone){
 
 /* ================= nav ================= */
 function renderNav(){
-  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["tournament","🏆 Tournament"],["coins","🪙 Coins"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
+  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
   const pendingCount = state.payments.filter(p=>p.status==="pending" && p.type!=="coin").length + state.payments.filter(p=>p.type==="coin" && p.status==="pending").length;
+  const marketPending = state.marketplace.filter(m=>m.status==="pending").length;
   document.getElementById("nav").innerHTML = items.map(([key,label]) => `
     <button data-tab="${key}" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${state.tab===key ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:bg-slate-900"}">
-      ${label}${key==="payments" && pendingCount>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${pendingCount}</span>` : ""}
+      ${label}${key==="payments" && pendingCount>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${pendingCount}</span>` : ""}${key==="market" && marketPending>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${marketPending}</span>` : ""}
     </button>`).join("");
 }
 
@@ -410,41 +442,53 @@ function renderAds(){
 }
 
 /* ================= tournaments panel ================= */
-function renderTournamentPanel(){
-  const f = state.tourForm;
+/* ================= marketplace panel: user-posted product listings ================= */
+function renderMarketPanel(){
+  const pending = state.marketplace.filter(m=>m.status==="pending");
+  const approved = state.marketplace.filter(m=>m.status==="approved");
+  const rejected = state.marketplace.filter(m=>m.status==="rejected");
   return `
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-      <h3 class="font-bold mb-3">➕ Fungua Tournament Mpya</h3>
-      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Tournament</span>
-        <input id="t-name" value="${esc(f.name)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
-      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina</span>
-        <select id="t-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
-          <option value="league" ${f.type==="league"?"selected":""}>Ligi</option><option value="knockout" ${f.type==="knockout"?"selected":""}>Knockout</option>
-        </select></label>
-      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Ada ya kujiunga</span>
-        <input id="t-fee" value="${esc(f.fee)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano 1000 TZS" /></label>
-      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Maelezo</span>
-        <textarea id="t-desc" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">${esc(f.description)}</textarea></label>
-      <button data-action="save-tournament" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Fungua Tournament</button>
-    </div>
-    <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-      <h3 class="font-bold mb-3">Tournament Zilizopo</h3>
-      <div class="space-y-2">
-        ${state.tournaments.map(t=>`
-          <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
-            <div class="flex-1"><p class="text-xs font-bold">${esc(t.name)}</p><p class="text-[10px] text-slate-500">${t.type==="league"?"Ligi":"Knockout"} · Ada: ${esc(t.fee)}</p></div>
-            <button data-action="remove-tournament" data-id="${t.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
-          </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna tournament.</p>`}
-      </div>
-    </div>
-  </div>`;
+  <h3 class="font-bold mb-3">⏱ Bidhaa Zinazosubiri Idhini (${pending.length})</h3>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+    ${pending.map(m=>`
+      <div class="bg-slate-900/70 border border-amber-500/30 rounded-xl p-3">
+        <img src="${m.image}" class="w-full rounded-lg border border-slate-800 mb-2 max-h-40 object-cover bg-slate-950"/>
+        <p class="text-xs font-bold">${esc(m.productName)}</p>
+        <p class="text-[11px] text-amber-300 font-bold">${esc(m.price)}</p>
+        <p class="text-[11px] text-slate-400">${esc(m.category)} · ${esc(m.username)} (${esc(m.sellerPhone)})</p>
+        <div class="flex gap-2 mt-2">
+          <button data-action="decide-market" data-id="${m.id}" data-status="approved" class="flex-1 bg-emerald-500 text-slate-950 font-bold text-xs py-2 rounded-lg">✅ Ruhusu</button>
+          <button data-action="decide-market" data-id="${m.id}" data-status="rejected" class="flex-1 bg-rose-500/80 text-slate-950 font-bold text-xs py-2 rounded-lg">✖ Kataa</button>
+        </div>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Hakuna bidhaa mpya zinazosubiri.</p>`}
+  </div>
+
+  <h3 class="font-bold mb-3">✅ Bidhaa Zilizoruhusiwa (${approved.length})</h3>
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+    ${approved.map(m=>`
+      <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
+        <img src="${m.image}" class="w-12 h-12 rounded object-cover"/>
+        <div class="flex-1 min-w-0"><p class="text-xs font-bold truncate">${esc(m.productName)}</p><p class="text-[10px] text-slate-500">${esc(m.price)} · ${esc(m.category)}</p></div>
+        <button data-action="remove-market" data-id="${m.id}" class="p-1.5 rounded text-slate-600 hover:text-rose-400">🗑</button>
+      </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna bidhaa zilizoruhusiwa.</p>`}
+  </div>
+
+  ${rejected.length > 0 ? `
+  <h3 class="font-bold mb-3 text-slate-400 text-sm">Zilizokataliwa</h3>
+  <div class="space-y-2">
+    ${rejected.map(m=>`<div class="flex items-center justify-between bg-slate-950/60 rounded-lg p-2 text-xs">
+      <span>${esc(m.productName)} — ${esc(m.username)}</span>
+      <button data-action="remove-market" data-id="${m.id}" class="text-rose-400">Futa</button>
+    </div>`).join("")}
+  </div>` : ""}`;
 }
 
 /* ================= coins panel: spin config + coin packages ================= */
 function renderCoinsPanel(){
   const cfg = state.spinConfig;
   const pf = state.pkgForm;
+  const vf = state.vipForm;
+  const va = state.videoAd;
   return `
   <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
     <h3 class="font-bold mb-3">🎡 Spin ya Coins — Picha 5</h3>
@@ -492,12 +536,64 @@ function renderCoinsPanel(){
           <button data-action="remove-coin-package" data-id="${p.id}" class="mt-2 text-[11px] text-rose-400">Futa</button>
         </div>`).join("") || `<p class="text-slate-600 text-xs col-span-3">Bado hakuna pakiti.</p>`}
     </div>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mt-5">
+    <h3 class="font-bold mb-3">🌟 Mipango ya SVIP (VIP, VIP Lite, ALTAI SUPER)</h3>
+    <p class="text-[11px] text-slate-500 mb-3">Mteja akinunua mpango wowote hapa na kuidhinishwa, atapata game ZOTE bila malipo ya ziada, na bila kusubiri matangazo, kwa muda wa siku ulizoweka.</p>
+    <div class="flex flex-wrap items-end gap-3 mb-4">
+      <label class="block"><span class="block text-[11px] text-slate-500 mb-1">Jina la Mpango</span>
+        <input id="vip-name" value="${esc(vf.name)}" class="w-40 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano VIP Lite" /></label>
+      <label class="block"><span class="block text-[11px] text-slate-500 mb-1">Bei</span>
+        <input id="vip-price" value="${esc(vf.price)}" class="w-32 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="5000 TZS" /></label>
+      <label class="block"><span class="block text-[11px] text-slate-500 mb-1">Muda (siku)</span>
+        <input id="vip-days" type="number" min="1" value="${esc(vf.durationDays)}" class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="30" /></label>
+      <button data-action="add-vip-plan" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">➕ Ongeza Mpango</button>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      ${state.vipPlans.map(v => `
+        <div class="bg-slate-950/60 border border-slate-800 rounded-lg p-3 text-center">
+          <p class="font-extrabold text-amber-300">🌟 ${esc(v.name)}</p>
+          <p class="text-[11px] text-slate-500">${esc(v.price)} · siku ${esc(v.durationDays)}</p>
+          <button data-action="remove-vip-plan" data-id="${v.id}" class="mt-2 text-[11px] text-rose-400">Futa</button>
+        </div>`).join("") || `<p class="text-slate-600 text-xs col-span-3">Bado hakuna mpango wa VIP.</p>`}
+    </div>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mt-5">
+    <h3 class="font-bold mb-3">📺 Mipangilio ya Tangazo la Video (Ad-Gate)</h3>
+    <p class="text-[11px] text-slate-500 mb-3">Hii ndiyo tangazo litakaloonekana kabla ya download (isipokuwa kwa VIP au waliozuia matangazo). Weka link ya YouTube au link ya moja kwa moja ya video.</p>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Link ya Video (YouTube au MP4)</span>
+      <input id="va-url" value="${esc(va.videoUrl)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/watch?v=..." /></label>
+    <div class="grid grid-cols-2 gap-3 mb-3">
+      <label class="block"><span class="block text-xs font-semibold text-slate-400 mb-1">Sekunde za Kusubiri</span>
+        <input id="va-seconds" type="number" min="3" value="${esc(va.watchSeconds)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block"><span class="block text-xs font-semibold text-slate-400 mb-1">Gharama ya Kuzuia Matangazo (coins)</span>
+        <input id="va-blockcost" type="number" min="0" value="${esc(va.blockAdsCost)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+    </div>
+    <button data-action="save-videoad" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Hifadhi Mipangilio</button>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mt-5">
+    <h3 class="font-bold mb-3">📝 Ushauri wa Admin</h3>
+    <p class="text-[11px] text-slate-500 mb-3">Ubao wa maelezo/ushauri kati ya waliosimamia dashboard hii — sio kwa wateja.</p>
+    <div class="flex gap-2 mb-4">
+      <input id="note-text" value="${esc(state.noteForm.text)}" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Andika ushauri/maelezo..." />
+      <button data-action="add-note" class="bg-violet-500 hover:bg-violet-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Tuma</button>
+    </div>
+    <div class="space-y-2 max-h-64 overflow-y-auto">
+      ${state.adminAdvice.slice().reverse().map(n => `
+        <div class="flex items-start justify-between gap-2 bg-slate-950/60 rounded-lg p-2 text-xs">
+          <div><p class="text-slate-200">${esc(n.text)}</p><p class="text-[10px] text-slate-500 mt-0.5">${new Date(n.at).toLocaleString()}</p></div>
+          <button data-action="remove-note" data-id="${n.id}" class="text-rose-400 flex-shrink-0">✖</button>
+        </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna ushauri.</p>`}
+    </div>
   </div>`;
 }
 
 /* ================= payments panel ================= */
 function renderPayments(){
-  const cash = state.payments.filter(p=>p.type==="game" || p.type==="tournament");
+  const cash = state.payments.filter(p=>p.type==="game" || p.type==="tournament" || p.type==="vip");
   const coinReqs = state.payments.filter(p=>p.type==="coin");
   const coinPurchases = state.payments.filter(p=>p.type==="coinpurchase");
   const pending = cash.filter(p=>p.status==="pending");
@@ -546,7 +642,7 @@ function renderPayments(){
     ${pending.map(p=>`
       <div class="bg-slate-900/70 border border-amber-500/30 rounded-xl p-3">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-bold">${p.type==="game"?"🎮 Game":"🏆 Tournament"}: ${esc(p.targetName)}</span>
+          <span class="text-xs font-bold">${p.type==="game"?"🎮 Game":p.type==="vip"?"🌟 VIP":"🏆 Tournament"}: ${esc(p.targetName)}</span>
           <span class="text-[10px] text-slate-500">${new Date(p.submittedAt).toLocaleString()}</span>
         </div>
         ${p.method==="spin" ? badge("🎡 Njia: Spin Win","violet") : ""}
@@ -651,7 +747,7 @@ function _render(){
   if(state.tab==="overview") main.innerHTML = renderOverview();
   else if(state.tab==="games") main.innerHTML = renderGames();
   else if(state.tab==="ads") main.innerHTML = renderAds();
-  else if(state.tab==="tournament") main.innerHTML = renderTournamentPanel();
+  else if(state.tab==="market") main.innerHTML = renderMarketPanel();
   else if(state.tab==="coins") main.innerHTML = renderCoinsPanel();
   else if(state.tab==="payments") main.innerHTML = renderPayments();
   else if(state.tab==="users") main.innerHTML = renderUsers();
@@ -774,21 +870,53 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  if(action === "save-tournament"){
-    const f = state.tourForm;
-    f.name = document.getElementById("t-name").value.trim();
-    f.type = document.getElementById("t-type").value;
-    f.fee = document.getElementById("t-fee").value.trim();
-    f.description = document.getElementById("t-desc").value.trim();
-    if(!f.name || !f.fee){ alert("Weka jina na ada ya tournament."); return; }
-    const ok = await setJSON(K.tournaments, [...state.tournaments, { id: uid(), ...f }]);
-    if(!ok){ alert("Imeshindwa kuhifadhi tournament — angalia mtandao wako kisha jaribu tena."); return; }
-    state.tourForm = { name:"", type:"league", fee:"", description:"" };
+  if(action === "decide-market"){
+    const next = state.marketplace.map(m => m.id===act.dataset.id ? {...m, status: act.dataset.status} : m);
+    await setJSON(K.marketplace, next); await refresh(); render();
+    return;
+  }
+  if(action === "remove-market"){
+    await setJSON(K.marketplace, state.marketplace.filter(m=>m.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+  if(action === "add-vip-plan"){
+    syncVipFormFromDom();
+    const f = state.vipForm;
+    if(!f.name.trim() || !f.price.trim() || !Number(f.durationDays)){ alert("Weka jina, bei, na muda (siku) wa mpango wa VIP."); return; }
+    const next = [...state.vipPlans, { id: uid(), name: f.name.trim(), price: f.price.trim(), durationDays: Number(f.durationDays) }];
+    const ok = await setJSON(K.vipPlans, next);
+    if(!ok){ alert("Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."); return; }
+    state.vipForm = { name:"", price:"", durationDays:"" };
     await refresh(); render();
     return;
   }
-  if(action === "remove-tournament"){
-    await setJSON(K.tournaments, state.tournaments.filter(t=>t.id!==act.dataset.id)); await refresh(); render();
+  if(action === "remove-vip-plan"){
+    await setJSON(K.vipPlans, state.vipPlans.filter(v=>v.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+  if(action === "save-videoad"){
+    syncVideoAdFormFromDom();
+    const va = { videoUrl: state.videoAd.videoUrl.trim(), watchSeconds: Math.max(3, Number(state.videoAd.watchSeconds)||10), blockAdsCost: Math.max(0, Number(state.videoAd.blockAdsCost)||0) };
+    const ok = await setJSON(K.videoAd, va);
+    if(!ok){ alert("Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."); return; }
+    state.videoAd = va;
+    render();
+    alert("Mipangilio ya tangazo imehifadhiwa!");
+    return;
+  }
+  if(action === "add-note"){
+    syncNoteFormFromDom();
+    const text = state.noteForm.text.trim();
+    if(!text) return;
+    const next = [...state.adminAdvice, { id: uid(), text, at: Date.now() }];
+    const ok = await setJSON(K.adminAdvice, next);
+    if(!ok){ alert("Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."); return; }
+    state.noteForm = { text:"" };
+    await refresh(); render();
+    return;
+  }
+  if(action === "remove-note"){
+    await setJSON(K.adminAdvice, state.adminAdvice.filter(n=>n.id!==act.dataset.id)); await refresh(); render();
     return;
   }
 
@@ -800,7 +928,21 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if(action === "decide-payment"){
-    const next = state.payments.map(p => p.id===act.dataset.id ? {...p, status: act.dataset.status} : p);
+    const p = state.payments.find(x=>x.id===act.dataset.id);
+    const status = act.dataset.status;
+    /* approving a VIP purchase grants the plan's days to the user (stacked onto any remaining time) */
+    if(p && p.type==="vip" && status==="approved"){
+      const users = await getJSON(K.users, []);
+      const uIdx = users.findIndex(u=>u.phone===p.userPhone);
+      if(uIdx>=0){
+        const days = Number(p.vipDurationDays||0);
+        const base = Math.max(Date.now(), Number(users[uIdx].vipExpiresAt||0));
+        users[uIdx].vipExpiresAt = base + days*24*60*60*1000;
+        users[uIdx].vipTier = p.targetName;
+        await setJSON(K.users, users);
+      }
+    }
+    const next = state.payments.map(x => x.id===act.dataset.id ? {...x, status} : x);
     await setJSON(K.payments, next); await refresh(); render();
     return;
   }
