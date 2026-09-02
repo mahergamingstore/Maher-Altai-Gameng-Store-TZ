@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@700;800&display=swap');
-  body{font-family:'Rajdhani',sans-serif;background:#020304;color:#f1f5f9;
+  body{font-family:'Rajdhani',sans-serif;background:#05070B;color:#f1f5f9;
     background-image:radial-gradient(circle at 30% -10%, rgba(255,255,255,.05), transparent 40%),
                       radial-gradient(circle at 15% 0%, rgba(251,191,36,.06), transparent 40%),
                       radial-gradient(circle at 85% 15%, rgba(168,85,247,.08), transparent 45%);
@@ -47,11 +47,13 @@
   <nav class="max-w-6xl mx-auto px-4 flex gap-1 pb-2 overflow-x-auto no-scrollbar text-xs font-semibold" id="nav-tabs"></nav>
 </header>
 
-<main class="max-w-6xl mx-auto px-4 py-6" id="app"></main>
+<main class="max-w-6xl mx-auto px-4 py-6 pb-24" id="app"></main>
 
-<footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-600">
+<footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-600 pb-24">
   © <span id="year"></span> MaherGamingStore — Msaada wa AI: ALTAImaher robot 🤖
 </footer>
+
+<nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 z-30 bg-[#0B1018]/95 backdrop-blur border-t border-slate-800 flex items-stretch"></nav>
 
 <!-- chat widget -->
 <button id="chat-toggle" class="fixed bottom-5 right-5 z-[90] w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-violet-500 shadow-lg shadow-amber-500/30 flex items-center justify-center text-slate-950 text-xl">💬</button>
@@ -79,7 +81,8 @@ const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
 const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
-  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice" };
+  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
+  reviews:"mgs/reviews" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -124,6 +127,9 @@ let state = {
   spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
   marketplace: [], vipPlans: [], videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 }, adminAdvice: [],
   marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" },
+  reviews: [], stats: { visits:0, dailyDownloads:{}, downloadsLog:[] },
+  reviewForm: { rating: 5, text: "" },
+  loaded: false,
   modal: null,
 };
 
@@ -149,15 +155,17 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
+    getJSON(K.reviews, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
   state.spinConfig=sp; state.coinPackages=cp;
   state.marketplace=mk; state.vipPlans=vp; state.videoAd=va; state.adminAdvice=adv;
+  state.reviews=rv; state.stats=st; state.loaded = true;
   if(state.user){
     const users = await getJSON(K.users, []);
     const fresh = users.find(u=>u.phone===state.user.phone);
@@ -229,8 +237,36 @@ function renderNav(){
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
 
+/* mobile-first bottom navigation: Home | Store | Coins | Library | Account */
+function renderBottomNav(){
+  const el = document.getElementById("bottom-nav");
+  if(!el) return;
+  const tabs = [["home","🏠","Home"],["store","🛒","Store"],["coins","🪙","Coins"],["library","📚","Library"],["account","👤","Account"]];
+  el.innerHTML = tabs.map(([key,icon,label]) => `
+    <button data-tab="${key}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold ${state.tab===key ? "text-amber-400" : "text-slate-500"}">
+      <span class="text-lg leading-none">${icon}</span>${label}
+    </button>`).join("");
+}
+
 /* ================= game card ================= */
 function myPaymentsFor(){ return state.payments.filter(p => state.user && p.userPhone===state.user.phone); }
+function gameRating(gameId){
+  const rv = state.reviews.filter(r=>r.gameId===gameId);
+  if(rv.length===0) return { avg:0, count:0 };
+  const avg = rv.reduce((s,r)=>s+Number(r.rating||0),0) / rv.length;
+  return { avg, count: rv.length };
+}
+function isFavorite(gameId){ return !!(state.user && state.user.favorites && state.user.favorites.includes(gameId)); }
+function isNewGame(g){ return !!(g.createdAt && (Date.now() - g.createdAt) < 7*24*60*60*1000); }
+function starsHtml(avg, size){
+  size = size || "text-xs";
+  let out = "";
+  for(let i=1;i<=5;i++) out += `<span class="${size} ${i<=Math.round(avg) ? "text-amber-400" : "text-slate-700"}">★</span>`;
+  return out;
+}
+function downloadCountFor(gameId){
+  return (state.stats.downloadsLog||[]).filter(d=>d.gameId===gameId).length;
+}
 
 function gameCard(g){
   const myPay = myPaymentsFor();
@@ -291,16 +327,24 @@ function gameCard(g){
   }
 
   const platIcon = g.platform==="PC" ? "🖥" : g.platform==="Android" ? "📱" : "🖥📱";
+  const rating = gameRating(g.id);
   return `
   <div class="h-full bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden hover:border-amber-500/50 transition group glow-card flex flex-col">
-    <div class="relative aspect-video bg-slate-800 overflow-hidden">
+    <div class="relative aspect-video bg-slate-800 overflow-hidden cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">
       ${g.image ? `<img src="${g.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />` : `<div class="w-full h-full flex items-center justify-center text-slate-600 text-3xl">🎮</div>`}
-      ${g.trending ? `<div class="absolute top-2 left-2">${badge("🔥 Trending","rose")}</div>` : ""}
-      <div class="absolute top-2 right-2">${isFree ? badge("Bure","violet") : badge("Kulipia","amber")}</div>
+      <div class="absolute top-2 left-2 flex flex-col gap-1 items-start">
+        ${g.trending ? badge("🔥 Trending","rose") : ""}
+        ${isNewGame(g) ? badge("🆕 NEW","emerald") : ""}
+      </div>
+      <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
+        ${isFree ? badge("Bure","violet") : badge("Kulipia","amber")}
+      </div>
+      <button data-action="toggle-favorite" data-id="${g.id}" class="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-lg ${isFavorite(g.id) ? "text-rose-500" : "text-white/70"}">${isFavorite(g.id) ? "❤️" : "🤍"}</button>
     </div>
     <div class="p-3 flex-1 flex flex-col">
-      <h4 class="font-bold text-sm text-slate-100 truncate">${esc(g.title)}</h4>
-      ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">💰 ${esc(g.price)}</p>` : ""}
+      <h4 class="font-bold text-sm text-slate-100 truncate cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">${esc(g.title)}</h4>
+      <div class="flex items-center gap-1 mt-0.5">${starsHtml(rating.avg)}<span class="text-[10px] text-slate-500 ml-1">${rating.count>0 ? `(${rating.count})` : "Bado hakuna rating"}</span></div>
+      ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">${g.originalPrice && g.salePrice ? `<span class="line-through text-slate-500 text-xs mr-1">${esc(g.originalPrice)}</span>💰 ${esc(g.salePrice)}` : `💰 ${esc(g.price)}`}</p>` : ""}
       <div class="flex items-center flex-wrap gap-2 mt-1 text-[11px] text-slate-400">
         <span>${platIcon} ${esc(g.platform)}</span>
         ${g.genre ? `<span>${GENRE_ICON[g.genre]||"🎮"} ${esc(g.genre)}</span>` : ""}
@@ -314,6 +358,7 @@ function gameCard(g){
           g.firmwareLink ? `<a href="${g.firmwareLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-teal-300 hover:text-teal-200">🧩 Firmware →</a>` : "",
           g.prodKeysLink ? `<a href="${g.prodKeysLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-yellow-300 hover:text-yellow-200">🔑 Prod Keys →</a>` : "",
         ].join("") : ""}
+        <button data-action="open-gamedetail" data-id="${g.id}" class="mt-2 w-full text-center text-[11px] font-semibold text-slate-400 hover:text-amber-300">ℹ️ Maelezo Zaidi</button>
       </div>
     </div>
   </div>`;
@@ -407,14 +452,19 @@ function adScreenHtml(ad, idx){
 /* ================= tabs ================= */
 function renderHome(){
   const trending = state.games.filter(g=>g.trending);
+  const newReleases = state.games.filter(isNewGame).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const mostDownloaded = [...state.games].sort((a,b)=>downloadCountFor(b.id)-downloadCountFor(a.id)).filter(g=>downloadCountFor(g.id)>0).slice(0,12);
+  const topRated = [...state.games].sort((a,b)=>gameRating(b.id).avg-gameRating(a.id).avg).filter(g=>gameRating(g.id).count>0).slice(0,12);
+  const recommended = state.games.filter(g=>g.category==="Bure" || g.trending).slice(0,12);
   return `
   <section class="mb-6">
-    <p class="text-amber-400 text-xs font-bold tracking-widest mb-2">DUKA LA GAME #1</p>
-    <h1 class="brandfont text-2xl sm:text-4xl font-extrabold leading-tight mb-2">Pakua Game Ulizozipenda,<br/>Bure au Kulipia.</h1>
-    <p class="text-slate-400 text-sm max-w-md mb-4">Tazama matangazo, kusanya coins🪙, na jiunge na tournament za mpira — kila kitu sehemu moja.</p>
+    <p class="text-amber-400 text-xs font-bold tracking-widest mb-2">WELCOME TO MAHERGAMINGSTORE</p>
+    <h1 class="brandfont text-2xl sm:text-4xl font-extrabold leading-tight mb-2">Your Ultimate<br/>Gaming Hub.</h1>
+    <p class="text-slate-400 text-sm max-w-md mb-4">Tazama matangazo, kusanya coins🪙, uza/nunue vifaa sokoni, na pakua game bora zaidi — kila kitu sehemu moja.</p>
+    <button data-tab="store" class="bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950 font-bold px-5 py-2.5 rounded-full text-sm">EXPLORE GAMES →</button>
   </section>
 
-  <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">🔥</span><h2 class="font-bold">Zinazo-Trend Sasa</h2></div>
+  <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">🔥</span><h2 class="font-bold">Trending Sasa</h2></div>
   ${heroSlideshowHtml(trending)}
 
   <div class="flex items-center gap-2 mb-3"><span class="text-amber-400">📂</span><h2 class="font-bold">Category za Game</h2></div>
@@ -428,8 +478,82 @@ function renderHome(){
     </button>
   </div>
 
-  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">✨</span><h2 class="font-bold">Zinazo-Trend — Vinjari</h2></div>
-  ${horizontalRow(trending)}`;
+  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">✨</span><h2 class="font-bold">🔥 Trending — Vinjari</h2></div>
+  ${horizontalRow(trending)}
+
+  ${newReleases.length>0 ? `<div class="flex items-center gap-2 mb-3 mt-8"><span class="text-emerald-400">🆕</span><h2 class="font-bold">New Releases</h2></div>${horizontalRow(newReleases)}` : ""}
+  ${mostDownloaded.length>0 ? `<div class="flex items-center gap-2 mb-3 mt-8"><span class="text-amber-400">📥</span><h2 class="font-bold">Most Downloaded</h2></div>${horizontalRow(mostDownloaded)}` : ""}
+  ${topRated.length>0 ? `<div class="flex items-center gap-2 mb-3 mt-8"><span class="text-amber-400">⭐</span><h2 class="font-bold">Top Rated</h2></div>${horizontalRow(topRated)}` : ""}
+  ${recommended.length>0 ? `<div class="flex items-center gap-2 mb-3 mt-8"><span class="text-violet-400">🏆</span><h2 class="font-bold">Recommended</h2></div>${horizontalRow(recommended)}` : ""}`;
+}
+
+/* ================= Library: favorites, purchases, download history ================= */
+function renderLibrary(){
+  if(!state.user){
+    return `<div class="flex items-center gap-2 mb-1"><span class="text-amber-400">📚</span><h2 class="font-bold">Library</h2></div>
+    <p class="text-slate-500 text-sm mb-4">Ingia kwanza ili uone Favorites, Purchases na Download History yako.</p>
+    <button data-action="open-auth" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Ingia / Jisajili</button>`;
+  }
+  const favIds = state.user.favorites || [];
+  const favGames = state.games.filter(g=>favIds.includes(g.id));
+  const myPay = myPaymentsFor();
+  const purchasedIds = [...new Set(myPay.filter(p=>p.type==="game" && p.status==="approved").map(p=>p.targetId))];
+  const purchasedGames = state.games.filter(g=>purchasedIds.includes(g.id));
+  const myDownloads = (state.stats.downloadsLog||[]).filter(d=>d.userPhone===state.user.phone).slice().reverse().slice(0,30);
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">📚</span><h2 class="font-bold">Library Yangu</h2></div>
+  <p class="text-slate-500 text-xs mb-4">Favorites, ulizonunua, na historia ya downloads zako.</p>
+
+  <div class="flex items-center gap-2 mb-3"><span class="text-rose-400">❤️</span><h3 class="font-bold text-sm">Favorites (${favGames.length})</h3></div>
+  ${favGames.length>0 ? horizontalRow(favGames) : `<p class="text-slate-500 text-sm mb-6">Bado hujaweka favorite yoyote — bofya 🤍 kwenye game upendayo.</p>`}
+
+  <div class="flex items-center gap-2 mb-3 mt-8"><span class="text-amber-400">🛒</span><h3 class="font-bold text-sm">Ulizonunua (${purchasedGames.length})</h3></div>
+  ${purchasedGames.length>0 ? horizontalRow(purchasedGames) : `<p class="text-slate-500 text-sm mb-6">Bado hujanunua game yoyote ya kulipia.</p>`}
+
+  <div class="flex items-center gap-2 mb-3 mt-8"><span class="text-violet-400">📥</span><h3 class="font-bold text-sm">Download History</h3></div>
+  <div class="space-y-2">
+    ${myDownloads.map(d => `
+      <div class="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg p-2.5 text-xs">
+        <div><p class="font-bold">${esc(d.gameTitle||"—")}</p><p class="text-[10px] text-slate-500">${new Date(d.date).toLocaleString()} · ${d.type==="free"?"Bure":"Kulipia"}</p></div>
+        <span class="text-emerald-400 font-bold">✅ Imepakuliwa</span>
+      </div>`).join("") || `<p class="text-slate-500 text-sm">Bado hujapakua game yoyote.</p>`}
+  </div>`;
+}
+
+/* ================= Account ================= */
+function renderAccount(){
+  if(!state.user){
+    return `<div class="flex items-center gap-2 mb-1"><span class="text-amber-400">👤</span><h2 class="font-bold">Account</h2></div>
+    <p class="text-slate-500 text-sm mb-4">Ingia kwanza ili uone taarifa za akaunti yako.</p>
+    <button data-action="open-auth" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Ingia / Jisajili</button>`;
+  }
+  const u = state.user;
+  const vipActive = isUserVip();
+  const myPay = myPaymentsFor();
+  const purchases = myPay.filter(p=>p.status==="approved").length;
+  return `
+  <div class="flex items-center gap-2 mb-4"><span class="text-amber-400">👤</span><h2 class="font-bold">Account Yangu</h2></div>
+  <div class="bg-gradient-to-br from-amber-500/10 to-violet-500/10 border border-slate-800 rounded-2xl p-5 mb-6">
+    <div class="flex items-center gap-3">
+      <div class="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-violet-500 flex items-center justify-center text-xl font-bold text-slate-950">${esc((u.username||"?")[0].toUpperCase())}</div>
+      <div>
+        <p class="font-bold">${esc(u.username)}</p>
+        <p class="text-[11px] text-slate-500">${esc(u.phone)}</p>
+        ${vipActive ? `<span class="text-[10px] text-emerald-400 font-bold">🌟 ${esc(u.vipTier||"VIP")} hai</span>` : ""}
+      </div>
+    </div>
+  </div>
+  <div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center"><p class="text-lg font-extrabold text-amber-300">🪙 ${u.coins||0}</p><p class="text-[10px] text-slate-500">Coins</p></div>
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center"><p class="text-lg font-extrabold text-emerald-400">${purchases}</p><p class="text-[10px] text-slate-500">Manunuzi</p></div>
+    <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center"><p class="text-lg font-extrabold text-rose-400">${(u.favorites||[]).length}</p><p class="text-[10px] text-slate-500">Favorites</p></div>
+  </div>
+  <div class="space-y-2">
+    <button data-tab="library" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">📚 Library Yangu <span>→</span></button>
+    <button data-tab="coins" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">🪙 Coins & VIP <span>→</span></button>
+    <button data-tab="market" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">🛍️ Masoko Yangu <span>→</span></button>
+    <button data-action="logout" class="w-full flex items-center justify-between bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg px-4 py-3 text-sm font-semibold">⏻ Toka (Logout) <span>→</span></button>
+  </div>`;
 }
 
 function renderStore(){
@@ -642,15 +766,37 @@ function blockAdsHtml(){
   return `<button data-action="buy-blockads" ${canBuy ? "" : "disabled"} class="mb-8 px-5 py-2.5 rounded-full font-bold text-sm ${canBuy ? "bg-rose-500 hover:bg-rose-400 text-slate-950" : "bg-slate-800 text-slate-500 cursor-not-allowed"}">🚫 Zuia Matangazo (🪙 ${cost})</button>`;
 }
 
+function skeletonGridHtml(count){
+  count = count || 8;
+  return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+    ${Array.from({length:count}).map(()=>`
+      <div class="rounded-xl overflow-hidden bg-slate-900/60 border border-slate-800 animate-pulse">
+        <div class="aspect-video bg-slate-800"></div>
+        <div class="p-3 space-y-2">
+          <div class="h-3 bg-slate-800 rounded w-3/4"></div>
+          <div class="h-2 bg-slate-800 rounded w-1/2"></div>
+          <div class="h-7 bg-slate-800 rounded mt-2"></div>
+        </div>
+      </div>`).join("")}
+  </div>`;
+}
 function _renderApp(){
   const app = document.getElementById("app");
+  if(!state.loaded){
+    app.innerHTML = `<div class="mb-4"><div class="h-3 w-40 bg-slate-800 rounded animate-pulse mb-2"></div><div class="h-40 bg-slate-900/60 rounded-2xl animate-pulse"></div></div>${skeletonGridHtml()}`;
+    renderHeader(); renderNav(); renderBottomNav();
+    return;
+  }
   if(state.tab==="home") app.innerHTML = renderHome();
   else if(state.tab==="store") app.innerHTML = renderStore();
   else if(state.tab==="coins") app.innerHTML = renderCoins();
   else if(state.tab==="ads") app.innerHTML = renderAds();
   else if(state.tab==="market") app.innerHTML = renderMarket();
+  else if(state.tab==="library") app.innerHTML = renderLibrary();
+  else if(state.tab==="account") app.innerHTML = renderAccount();
   renderHeader();
   renderNav();
+  renderBottomNav();
   if(state.tab==="ads") startAdTimers();
   if(state.tab==="home"){
     const trendingList = state.games.filter(g=>g.trending);
@@ -715,6 +861,119 @@ function renderModal(){
   if(state.modal.type === "coin-redeem") root.innerHTML = coinRedeemModalHtml(state.modal.request);
   if(state.modal.type === "buycoins") root.innerHTML = buyCoinsModalHtml(state.modal.pkg);
   if(state.modal.type === "adgate"){ root.innerHTML = adgateModalHtml(state.modal.game, state.modal.kind, state.modal.url, state.modal.label); startAdGateCountdown(); }
+  if(state.modal.type === "gamedetail") root.innerHTML = gameDetailModalHtml(state.modal.gameId);
+  if(state.modal.type === "gallery") root.innerHTML = galleryModalHtml(state.modal.images, state.modal.index);
+}
+
+/* ================= Game Details modal ================= */
+const COMPAT_LABEL = { low:"✅ Low-end device", medium:"⚠️ Medium device", high:"🔥 High-end device" };
+function gameDetailModalHtml(gameId){
+  const g = state.games.find(x=>x.id===gameId);
+  if(!g) return "";
+  const rating = gameRating(g.id);
+  const reviews = state.reviews.filter(r=>r.gameId===g.id).slice().reverse();
+  const isFree = g.category === "Bure";
+  const shots = g.screenshots || [];
+  const myReview = state.user ? reviews.find(r=>r.userPhone===state.user.phone) : null;
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+    <div class="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-slate-950 border border-slate-800 rounded-2xl relative shadow-2xl">
+      <button data-action="close-modal" class="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center">✕</button>
+      <div class="relative aspect-video bg-slate-900">
+        ${g.image ? `<img src="${g.image}" class="w-full h-full object-cover"/>` : `<div class="w-full h-full flex items-center justify-center text-5xl">🎮</div>`}
+        <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
+        <div class="absolute bottom-3 left-4 right-4">
+          <h2 class="brandfont text-xl sm:text-2xl font-extrabold text-white drop-shadow">${esc(g.title)}</h2>
+          <div class="flex items-center gap-2 mt-1">${starsHtml(rating.avg,"text-sm")}<span class="text-xs text-slate-300">${rating.avg.toFixed(1)} (${rating.count} reviews)</span></div>
+        </div>
+      </div>
+      <div class="p-4 sm:p-5">
+        <div class="flex flex-wrap gap-2 mb-4">
+          ${isFree ? badge("Bure","violet") : badge("Kulipia","amber")}
+          ${g.genre ? badge(`${GENRE_ICON[g.genre]||"🎮"} ${g.genre}`,"violet") : ""}
+          ${badge(`${g.platform==="PC"?"🖥":g.platform==="Android"?"📱":"🖥📱"} ${g.platform}`,"cyan")}
+          ${g.needsEmulator && g.emulatorCategory ? badge(`${EMULATOR_ICON[g.emulatorCategory]||"🕹️"} ${g.emulatorCategory}`,"cyan") : ""}
+          ${g.compatibility ? badge(COMPAT_LABEL[g.compatibility]||g.compatibility, g.compatibility==="high"?"rose":g.compatibility==="medium"?"amber":"emerald") : ""}
+          ${isNewGame(g) ? badge("🆕 NEW","emerald") : ""}
+          ${g.trending ? badge("🔥 Trending","rose") : ""}
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 text-[11px]">
+          ${g.fileSize ? `<div class="bg-slate-900/60 rounded-lg p-2"><p class="text-slate-500">File Size</p><p class="font-bold text-slate-200">${esc(g.fileSize)}</p></div>` : ""}
+          ${g.version ? `<div class="bg-slate-900/60 rounded-lg p-2"><p class="text-slate-500">Version</p><p class="font-bold text-slate-200">${esc(g.version)}</p></div>` : ""}
+          ${g.releaseDate ? `<div class="bg-slate-900/60 rounded-lg p-2"><p class="text-slate-500">Release Date</p><p class="font-bold text-slate-200">${esc(g.releaseDate)}</p></div>` : ""}
+          <div class="bg-slate-900/60 rounded-lg p-2"><p class="text-slate-500">Last Updated</p><p class="font-bold text-slate-200">${g.updatedAt ? new Date(g.updatedAt).toLocaleDateString() : "—"}</p></div>
+        </div>
+
+        ${g.description ? `<div class="mb-4"><h3 class="text-xs font-bold text-slate-400 mb-1">MAELEZO</h3><p class="text-sm text-slate-300 leading-relaxed">${esc(g.description)}</p></div>` : ""}
+
+        ${(g.reqMin || g.reqRec) ? `<div class="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          ${g.reqMin ? `<div><h3 class="text-xs font-bold text-slate-400 mb-1">MINIMUM REQUIREMENTS</h3><p class="text-xs text-slate-400 leading-relaxed">${esc(g.reqMin)}</p></div>` : ""}
+          ${g.reqRec ? `<div><h3 class="text-xs font-bold text-slate-400 mb-1">RECOMMENDED</h3><p class="text-xs text-slate-400 leading-relaxed">${esc(g.reqRec)}</p></div>` : ""}
+        </div>` : ""}
+
+        ${shots.length > 0 ? `<div class="mb-4">
+          <h3 class="text-xs font-bold text-slate-400 mb-2">SCREENSHOTS</h3>
+          <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            ${shots.map((s,i) => `<img src="${s}" data-action="open-gallery" data-id="${g.id}" data-index="${i}" class="w-28 h-16 object-cover rounded-lg border border-slate-800 cursor-pointer flex-shrink-0"/>`).join("")}
+          </div>
+        </div>` : ""}
+
+        ${g.trailerUrl ? `<div class="mb-4"><h3 class="text-xs font-bold text-slate-400 mb-2">TRAILER</h3>
+          <div class="aspect-video rounded-lg overflow-hidden bg-slate-900">${ytEmbed(g.trailerUrl)}</div></div>` : ""}
+
+        <div class="mb-4 bg-slate-900/50 border border-slate-800 rounded-lg p-3">
+          <h3 class="text-xs font-bold text-emerald-400 mb-2">✅ TRUST & SAFETY</h3>
+          <ul class="text-[11px] text-slate-400 space-y-1">
+            <li>✅ File tested na admin</li>
+            <li>✅ Link imehakikiwa</li>
+            ${g.fileSize ? `<li>✅ File size: ${esc(g.fileSize)}</li>` : ""}
+            <li>✅ Version: ${esc(g.version||"—")} · Updated: ${g.updatedAt ? new Date(g.updatedAt).toLocaleDateString() : "—"}</li>
+          </ul>
+        </div>
+
+        <div class="flex gap-2 mb-4">
+          <button data-action="toggle-favorite" data-id="${g.id}" class="flex-1 flex items-center justify-center gap-2 bg-slate-900 border border-slate-700 text-sm font-bold py-2.5 rounded-lg ${isFavorite(g.id) ? "text-rose-400" : "text-slate-300"}">${isFavorite(g.id) ? "❤️ Kwenye Library" : "🤍 Weka Favorite"}</button>
+        </div>
+        <div id="gamedetail-actions">${gameCard(g)}</div>
+
+        <div class="mt-6 pt-4 border-t border-slate-800">
+          <h3 class="text-sm font-bold mb-3">⭐ Reviews (${reviews.length})</h3>
+          ${state.user ? `
+          <div class="bg-slate-900/50 border border-slate-800 rounded-lg p-3 mb-3">
+            <p class="text-[11px] text-slate-500 mb-2">${myReview ? "Badilisha review yako:" : "Toa rating na review yako:"}</p>
+            <div class="flex gap-1 mb-2" id="review-stars">
+              ${[1,2,3,4,5].map(n => `<button type="button" data-action="set-review-rating" data-n="${n}" class="text-2xl ${n<=(state.reviewForm.rating||5) ? "text-amber-400" : "text-slate-700"}">★</button>`).join("")}
+            </div>
+            <textarea id="review-text" rows="2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-2" placeholder="Andika maoni yako...">${esc(myReview ? myReview.text : state.reviewForm.text)}</textarea>
+            <button data-action="submit-review" data-id="${g.id}" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg">Tuma Review</button>
+          </div>` : `<p class="text-[11px] text-amber-300 mb-3">Ingia kwanza ili uweze kutoa review.</p>`}
+          <div class="space-y-2 max-h-52 overflow-y-auto">
+            ${reviews.map(r => `<div class="bg-slate-900/40 rounded-lg p-2">
+              <div class="flex items-center justify-between"><span class="text-xs font-bold">${esc(r.username)}</span><span class="text-[10px] text-slate-500">${new Date(r.at).toLocaleDateString()}</span></div>
+              <div class="flex gap-0.5 my-1">${starsHtml(r.rating)}</div>
+              ${r.text ? `<p class="text-xs text-slate-400">${esc(r.text)}</p>` : ""}
+            </div>`).join("") || `<p class="text-[11px] text-slate-600">Bado hakuna review.</p>`}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function ytEmbed(url){
+  const m = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
+  if(m) return `<iframe class="w-full h-full" src="https://www.youtube.com/embed/${m[1]}" allowfullscreen></iframe>`;
+  return `<video class="w-full h-full" src="${url}" controls></video>`;
+}
+function galleryModalHtml(images, index){
+  return `
+  <div class="fixed inset-0 z-[110] bg-black/95 flex items-center justify-center p-2">
+    <button data-action="close-modal" class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/10 text-white flex items-center justify-center">✕</button>
+    ${images.length>1 ? `<button data-action="gallery-nav" data-dir="-1" class="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/10 text-white text-xl flex items-center justify-center">‹</button>` : ""}
+    <img src="${images[index]}" class="max-w-full max-h-[85vh] rounded-lg object-contain"/>
+    ${images.length>1 ? `<button data-action="gallery-nav" data-dir="1" class="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white/10 text-white text-xl flex items-center justify-center">›</button>` : ""}
+    <p class="absolute bottom-4 text-white/70 text-xs">${index+1} / ${images.length}</p>
+  </div>`;
 }
 
 /* ================= ad-gate: must watch a video ad before downloading (unless VIP / ads blocked) ================= */
@@ -1132,6 +1391,62 @@ document.addEventListener("click", async (e) => {
       if(ok) state.user = users[uIdx];
     }
     await refreshAll(); renderApp();
+    return;
+  }
+
+  if(action === "open-gamedetail"){
+    const id = act.dataset.id;
+    openModal({ type:"gamedetail", gameId:id });
+    return;
+  }
+
+  if(action === "toggle-favorite"){
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    const id = act.dataset.id;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){
+      const favs = users[uIdx].favorites || [];
+      users[uIdx].favorites = favs.includes(id) ? favs.filter(x=>x!==id) : [...favs, id];
+      const ok = await setJSON(K.users, users);
+      if(ok) state.user = users[uIdx];
+    }
+    renderApp();
+    if(state.modal && state.modal.type==="gamedetail") renderModal();
+    return;
+  }
+
+  if(action === "open-gallery"){
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!g || !g.screenshots) return;
+    openModal({ type:"gallery", images: g.screenshots, index: Number(act.dataset.index||0) });
+    return;
+  }
+  if(action === "gallery-nav"){
+    const dir = Number(act.dataset.dir);
+    const total = state.modal.images.length;
+    state.modal.index = ((state.modal.index + dir) % total + total) % total;
+    renderModal();
+    return;
+  }
+
+  if(action === "set-review-rating"){
+    state.reviewForm.rating = Number(act.dataset.n);
+    renderModal();
+    return;
+  }
+  if(action === "submit-review"){
+    if(!state.user) return;
+    const gameId = act.dataset.id;
+    const textEl = document.getElementById("review-text");
+    const text = textEl ? textEl.value.trim() : "";
+    const rating = state.reviewForm.rating || 5;
+    const reviews = await getJSON(K.reviews, []);
+    const existingIdx = reviews.findIndex(r=>r.gameId===gameId && r.userPhone===state.user.phone);
+    const entry = { id: existingIdx>=0 ? reviews[existingIdx].id : uid(), gameId, userPhone: state.user.phone, username: state.user.username, rating, text, at: Date.now() };
+    const next = existingIdx>=0 ? reviews.map((r,i)=>i===existingIdx?entry:r) : [...reviews, entry];
+    const ok = await setJSON(K.reviews, next);
+    if(ok){ state.reviews = next; state.reviewForm = { rating:5, text:"" }; renderModal(); }
     return;
   }
 

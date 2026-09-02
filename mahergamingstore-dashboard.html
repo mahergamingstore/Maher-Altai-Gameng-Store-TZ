@@ -131,7 +131,9 @@ const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK An
 /* ================= state ================= */
 const emptyGameForm = { title:"", image:"", category:"Bure", genre:"Action", coinCost:"", price:"",
   linkApk:"", linkObb:"", linkData:"", platform:"PC", needsEmulator:false, emulatorImage:"", emulatorCategory:"",
-  emulatorLink:"", firmwareLink:"", prodKeysLink:"", trending:false };
+  emulatorLink:"", firmwareLink:"", prodKeysLink:"", trending:false,
+  description:"", reqMin:"", reqRec:"", fileSize:"", version:"", releaseDate:"", trailerUrl:"", compatibility:"",
+  screenshots:[] };
 let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settings:{}, payments:[],
   stats:{ visits:0, dailyDownloads:{}, downloadsLog:[] },
   gameForm: { ...emptyGameForm },
@@ -185,6 +187,14 @@ function syncGameFormFromDom(){
   if(g("g-emulator-category")) f.emulatorCategory = g("g-emulator-category").value;
   if(g("g-firmware-link")) f.firmwareLink = g("g-firmware-link").value;
   if(g("g-prodkeys-link")) f.prodKeysLink = g("g-prodkeys-link").value;
+  if(g("g-description")) f.description = g("g-description").value;
+  if(g("g-filesize")) f.fileSize = g("g-filesize").value;
+  if(g("g-version")) f.version = g("g-version").value;
+  if(g("g-releasedate")) f.releaseDate = g("g-releasedate").value;
+  if(g("g-reqmin")) f.reqMin = g("g-reqmin").value;
+  if(g("g-reqrec")) f.reqRec = g("g-reqrec").value;
+  if(g("g-compatibility")) f.compatibility = g("g-compatibility").value;
+  if(g("g-trailer")) f.trailerUrl = g("g-trailer").value;
   if(g("g-needs-emu")) f.needsEmulator = g("g-needs-emu").checked;
   if(g("g-trending")) f.trending = g("g-trending").checked;
 }
@@ -387,6 +397,44 @@ function renderGames(){
         <input id="g-prodkeys-link" value="${esc(f.prodKeysLink)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>` : ""}
       <label class="flex items-center gap-2 mb-4 text-xs font-semibold text-slate-300">
         <input id="g-trending" type="checkbox" ${f.trending?"checked":""} /> Ionekane sehemu ya "Zinazo-Trend" Home</label>
+
+      <div class="mb-1 mt-2 pt-3 border-t border-slate-800"><span class="block text-xs font-semibold text-amber-300 mb-1">📄 Taarifa Kamili za Game (Game Details Page)</span></div>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Maelezo ya Game</span>
+        <textarea id="g-description" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">${esc(f.description)}</textarea></label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">File Size</span>
+          <input id="g-filesize" value="${esc(f.fileSize)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano 850 MB" /></label>
+        <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Version</span>
+          <input id="g-version" value="${esc(f.version)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano v1.2.0" /></label>
+      </div>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Release Date</span>
+        <input id="g-releasedate" type="date" value="${esc(f.releaseDate)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" /></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Minimum Requirements</span>
+        <textarea id="g-reqmin" rows="2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="RAM 2GB, Android 7+...">${esc(f.reqMin)}</textarea></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Recommended Requirements</span>
+        <textarea id="g-reqrec" rows="2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="RAM 4GB, Android 10+...">${esc(f.reqRec)}</textarea></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Compatibility (kiwango cha simu)</span>
+        <select id="g-compatibility" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          <option value="" ${!f.compatibility?"selected":""}>-- Chagua --</option>
+          <option value="low" ${f.compatibility==="low"?"selected":""}>✅ Low-end device</option>
+          <option value="medium" ${f.compatibility==="medium"?"selected":""}>⚠️ Medium device</option>
+          <option value="high" ${f.compatibility==="high"?"selected":""}>🔥 High-end device</option>
+        </select></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Trailer Link (YouTube, hiari)</span>
+        <input id="g-trailer" value="${esc(f.trailerUrl)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/watch?v=..." /></label>
+      <label class="block mb-4"><span class="block text-xs font-semibold text-slate-400 mb-1">Screenshots (unaweza kuongeza kadhaa)</span>
+        <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer mb-2">
+          <span>⬆ Bofya kuongeza screenshot</span>
+          <input id="g-screenshot-add" type="file" accept="image/*" class="hidden" />
+        </label>
+        <div class="flex flex-wrap gap-2">
+          ${(f.screenshots||[]).map((s,i) => `
+            <div class="relative">
+              <img src="${s}" class="w-16 h-16 rounded-lg object-cover border border-slate-700"/>
+              <button type="button" data-action="remove-screenshot" data-index="${i}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center">✕</button>
+            </div>`).join("") || `<p class="text-[11px] text-slate-600">Bado hakuna screenshots.</p>`}
+        </div></label>
+
       <button data-action="save-game" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">${state.editingGameId ? "💾 Sasisha Game" : "Hifadhi Game"}</button>
       ${state.editingGameId ? `<button data-action="cancel-edit-game" class="w-full mt-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-sm">Ghairi Uhariri</button>` : ""}
     </div>
@@ -759,6 +807,13 @@ document.addEventListener("change", (e) => {
   if(e.target.id === "g-image" && e.target.files[0]){ document.getElementById("g-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.image = d; document.getElementById("g-image-label").textContent = "Picha imewekwa ✔"; }); }
   if(e.target.id === "g-emu-image" && e.target.files[0]){ document.getElementById("g-emu-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.emulatorImage = d; document.getElementById("g-emu-image-label").textContent = "Picha imewekwa ✔"; }); }
   if(e.target.id === "a-image" && e.target.files[0]){ document.getElementById("a-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.adForm.image = d; document.getElementById("a-image-label").textContent = "Picha imewekwa ✔"; }); }
+  if(e.target.id === "g-screenshot-add" && e.target.files[0]){
+    compressImage(e.target.files[0], d => {
+      if(!state.gameForm.screenshots) state.gameForm.screenshots = [];
+      state.gameForm.screenshots.push(d);
+      render();
+    });
+  }
   if(e.target.id === "g-needs-emu"){ render(); }
   if(e.target.dataset && e.target.dataset.spinImage !== undefined && e.target.files[0]){
     const i = Number(e.target.dataset.spinImage);
@@ -794,12 +849,20 @@ document.addEventListener("click", async (e) => {
       f.emulatorCategory = document.getElementById("g-emulator-category").value;
     }
     f.trending = document.getElementById("g-trending").checked;
+    f.description = document.getElementById("g-description").value.trim();
+    f.fileSize = document.getElementById("g-filesize").value.trim();
+    f.version = document.getElementById("g-version").value.trim();
+    f.releaseDate = document.getElementById("g-releasedate").value;
+    f.reqMin = document.getElementById("g-reqmin").value.trim();
+    f.reqRec = document.getElementById("g-reqrec").value.trim();
+    f.compatibility = document.getElementById("g-compatibility").value;
+    f.trailerUrl = normalizeUrl(document.getElementById("g-trailer").value.trim());
     if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
     let nextGames;
     if(state.editingGameId){
-      nextGames = state.games.map(g => g.id===state.editingGameId ? { ...g, ...f, id: state.editingGameId } : g);
+      nextGames = state.games.map(g => g.id===state.editingGameId ? { ...g, ...f, id: state.editingGameId, updatedAt: Date.now() } : g);
     } else {
-      nextGames = [...state.games, { id: uid(), ...f }];
+      nextGames = [...state.games, { id: uid(), ...f, updatedAt: Date.now() }];
     }
     const ok = await setJSON(K.games, nextGames);
     if(!ok){ alert("Imeshindwa kuhifadhi game — angalia mtandao wako kisha jaribu tena."); return; }
@@ -814,9 +877,15 @@ document.addEventListener("click", async (e) => {
     if(!g) return;
     skipFormSync = true;
     state.editingGameId = g.id;
-    state.gameForm = { ...emptyGameForm, ...g };
+    state.gameForm = { ...emptyGameForm, ...g, screenshots: [...(g.screenshots||[])] };
     render();
     window.scrollTo({ top:0, behavior:"smooth" });
+    return;
+  }
+  if(action === "remove-screenshot"){
+    const i = Number(act.dataset.index);
+    state.gameForm.screenshots = (state.gameForm.screenshots||[]).filter((_,idx)=>idx!==i);
+    render();
     return;
   }
   if(action === "cancel-edit-game"){
