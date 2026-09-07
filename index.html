@@ -36,7 +36,7 @@
 
 <div class="ps-bg" id="ps-bg"></div>
 
-<header class="sticky top-0 z-40 backdrop-blur bg-[#080B12]/85 border-b border-slate-800">
+<header class="sticky top-0 z-40 backdrop-blur bg-[#080B12]/85 border-b border-slate-800 relative">
   <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-2">
       <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-400 to-violet-500 flex items-center justify-center text-lg shadow-lg shadow-amber-500/20">🎮</div>
@@ -45,6 +45,7 @@
     <div id="header-auth" class="flex items-center gap-3"></div>
   </div>
   <nav class="max-w-6xl mx-auto px-4 flex gap-1 pb-2 overflow-x-auto no-scrollbar text-xs font-semibold" id="nav-tabs"></nav>
+  <div id="notif-panel-host"></div>
 </header>
 
 <main class="max-w-6xl mx-auto px-4 py-6 pb-24" id="app"></main>
@@ -82,7 +83,8 @@ const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/p
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
   marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
-  reviews:"mgs/reviews" };
+  reviews:"mgs/reviews", notifications:"mgs/notifications", gameRequests:"mgs/gameRequests",
+  dailyRewards:"mgs/dailyRewards" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -129,6 +131,8 @@ let state = {
   marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" },
   reviews: [], stats: { visits:0, dailyDownloads:{}, downloadsLog:[] },
   reviewForm: { rating: 5, text: "" },
+  notifications: [], gameRequests: [], dailyRewards: [10,15,20,25,30,40,60],
+  requestForm: { title:"", platform:"Android" }, notifPanelOpen: false,
   loaded: false,
   modal: null,
 };
@@ -155,17 +159,19 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st,nt,gr,dr] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
     getJSON(K.reviews, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
+    getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
   state.spinConfig=sp; state.coinPackages=cp;
   state.marketplace=mk; state.vipPlans=vp; state.videoAd=va; state.adminAdvice=adv;
   state.reviews=rv; state.stats=st; state.loaded = true;
+  state.notifications=nt; state.gameRequests=gr; state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60];
   if(state.user){
     const users = await getJSON(K.users, []);
     const fresh = users.find(u=>u.phone===state.user.phone);
@@ -222,17 +228,43 @@ function badge(text, tone){
 function renderHeader(){
   const el = document.getElementById("header-auth");
   if(state.user){
+    const unread = state.notifications.filter(n => n.at > (state.user.lastSeenNotifAt||0)).length;
     el.innerHTML = `
+      <button data-action="toggle-notifs" class="relative text-slate-300 hover:text-amber-300 text-lg">🔔${unread>0 ? `<span class="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">${unread>9?"9+":unread}</span>` : ""}</button>
       <button data-tab="coins" class="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-full px-3 py-1 text-xs font-bold text-amber-300">🪙 ${state.user.coins||0}</button>
       <span class="hidden sm:block text-xs text-slate-400">Habari, ${esc(state.user.username)}</span>
       <button data-action="logout" class="text-slate-400 hover:text-rose-400 text-lg">⏻</button>`;
   } else {
     el.innerHTML = `<button data-action="open-auth" class="flex items-center gap-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg">Ingia / Jisajili</button>`;
   }
+  renderNotifPanel();
 }
 
+function renderNotifPanel(){
+  const host = document.getElementById("notif-panel-host");
+  if(!host) return;
+  if(!state.notifPanelOpen || !state.user){ host.innerHTML = ""; return; }
+  const list = state.notifications.slice().reverse().slice(0,30);
+  host.innerHTML = `
+  <div class="absolute right-3 top-14 z-50 w-80 max-w-[90vw] bg-slate-950/95 backdrop-blur border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+      <p class="font-bold text-sm">🔔 Notifications</p>
+      <button data-action="toggle-notifs" class="text-slate-500 text-sm">✕</button>
+    </div>
+    <div class="max-h-96 overflow-y-auto">
+      ${list.map(n => `
+        <div class="px-4 py-3 border-b border-slate-900 ${n.at > (state.user.lastSeenNotifAt||0) ? "bg-amber-500/5" : ""}">
+          <p class="text-xs font-bold">${NOTIF_ICON[n.type]||"🔔"} ${esc(n.title)}</p>
+          <p class="text-[11px] text-slate-400 mt-0.5">${esc(n.message)}</p>
+          <p class="text-[10px] text-slate-600 mt-1">${new Date(n.at).toLocaleString()}</p>
+        </div>`).join("") || `<p class="text-xs text-slate-600 px-4 py-6 text-center">Hakuna notifications bado.</p>`}
+    </div>
+  </div>`;
+}
+const NOTIF_ICON = { game:"🎮", featured:"🌟", reward:"🎁", vip:"👑", tournament:"🏆", update:"🛠️", announcement:"📢" };
+
 function renderNav(){
-  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["market","🛍️ Masoko"],["ads","📣 Matangazo"]];
+  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["market","🛍️ Masoko"],["ads","📣 Matangazo"],["help","🤖 Help"]];
   document.getElementById("nav-tabs").innerHTML = tabs.map(([key,label]) => `
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
@@ -262,6 +294,17 @@ function starsHtml(avg, size){
   size = size || "text-xs";
   let out = "";
   for(let i=1;i<=5;i++) out += `<span class="${size} ${i<=Math.round(avg) ? "text-amber-400" : "text-slate-700"}">★</span>`;
+  return out;
+}
+function starsHtmlHalf(value, size){
+  size = size || "text-xs";
+  const v = Math.max(0, Math.min(5, Math.round((Number(value)||0)*2)/2));
+  let out = "";
+  for(let i=1;i<=5;i++){
+    if(v>=i) out += `<span class="${size} text-amber-400">★</span>`;
+    else if(v>=i-0.5) out += `<span class="${size} text-amber-400" style="opacity:.5">★</span>`;
+    else out += `<span class="${size} text-slate-700">★</span>`;
+  }
   return out;
 }
 function downloadCountFor(gameId){
@@ -344,6 +387,7 @@ function gameCard(g){
     <div class="p-3 flex-1 flex flex-col">
       <h4 class="font-bold text-sm text-slate-100 truncate cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">${esc(g.title)}</h4>
       <div class="flex items-center gap-1 mt-0.5">${starsHtml(rating.avg)}<span class="text-[10px] text-slate-500 ml-1">${rating.count>0 ? `(${rating.count})` : "Bado hakuna rating"}</span></div>
+      ${g.adminRating ? `<div class="flex items-center gap-1 mt-0.5" title="Rating rasmi ya Admin">${starsHtmlHalf(g.adminRating,"text-[10px]")}<span class="text-[9px] text-violet-300 ml-1">🛡️ Official ${Number(g.adminRating).toFixed(1)}</span></div>` : ""}
       ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">${g.originalPrice && g.salePrice ? `<span class="line-through text-slate-500 text-xs mr-1">${esc(g.originalPrice)}</span>💰 ${esc(g.salePrice)}` : `💰 ${esc(g.price)}`}</p>` : ""}
       <div class="flex items-center flex-wrap gap-2 mt-1 text-[11px] text-slate-400">
         <span>${platIcon} ${esc(g.platform)}</span>
@@ -531,6 +575,10 @@ function renderAccount(){
   const vipActive = isUserVip();
   const myPay = myPaymentsFor();
   const purchases = myPay.filter(p=>p.status==="approved").length;
+  const today = new Date().toISOString().slice(0,10);
+  const streak = u.rewardStreak || 0;
+  const claimedToday = u.lastRewardClaimAt === today;
+  const rewards = state.dailyRewards;
   return `
   <div class="flex items-center gap-2 mb-4"><span class="text-amber-400">👤</span><h2 class="font-bold">Account Yangu</h2></div>
   <div class="bg-gradient-to-br from-amber-500/10 to-violet-500/10 border border-slate-800 rounded-2xl p-5 mb-6">
@@ -548,10 +596,25 @@ function renderAccount(){
     <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center"><p class="text-lg font-extrabold text-emerald-400">${purchases}</p><p class="text-[10px] text-slate-500">Manunuzi</p></div>
     <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center"><p class="text-lg font-extrabold text-rose-400">${(u.favorites||[]).length}</p><p class="text-[10px] text-slate-500">Favorites</p></div>
   </div>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6">
+    <h3 class="font-bold text-sm mb-1">🔥 Daily Rewards</h3>
+    <p class="text-[11px] text-slate-500 mb-3">Ingia kila siku upate coins zaidi — siku 7 mfululizo, reward inaongezeka.</p>
+    <div class="grid grid-cols-7 gap-1.5 mb-3">
+      ${rewards.map((r,i) => `
+        <div class="text-center">
+          <div class="aspect-square rounded-lg flex items-center justify-center text-[10px] font-bold border ${i < streak ? "bg-emerald-500/20 border-emerald-500 text-emerald-300" : i===streak && !claimedToday ? "bg-amber-500/20 border-amber-400 text-amber-300 animate-pulse" : "bg-slate-950 border-slate-800 text-slate-600"}">🪙${r}</div>
+          <p class="text-[9px] text-slate-600 mt-0.5">Day ${i+1}</p>
+        </div>`).join("")}
+    </div>
+    <button data-action="claim-daily-reward" ${claimedToday ? "disabled" : ""} class="w-full py-2.5 rounded-lg font-bold text-sm ${claimedToday ? "bg-slate-800 text-slate-500 cursor-not-allowed" : "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950"}">${claimedToday ? "✅ Umeshapokea leo" : `🎁 Pokea Coins za Leo (🪙${rewards[Math.min(streak,rewards.length-1)]})`}</button>
+  </div>
+
   <div class="space-y-2">
     <button data-tab="library" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">📚 Library Yangu <span>→</span></button>
     <button data-tab="coins" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">🪙 Coins & VIP <span>→</span></button>
     <button data-tab="market" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">🛍️ Masoko Yangu <span>→</span></button>
+    <button data-tab="help" class="w-full flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg px-4 py-3 text-sm font-semibold">🤖 Help Center <span>→</span></button>
     <button data-action="logout" class="w-full flex items-center justify-between bg-rose-500/10 border border-rose-500/30 text-rose-400 rounded-lg px-4 py-3 text-sm font-semibold">⏻ Toka (Logout) <span>→</span></button>
   </div>`;
 }
@@ -594,8 +657,7 @@ function renderAds(){
   <p class="text-slate-500 text-xs mb-4">Tazama tangazo kwa sekunde 5 upate coin 5, bonyeza link upate coin 5 nyingine.</p>
   ${!state.user ? `<p class="text-amber-300 text-xs mb-4">Ingia kwanza ili uweze kukusanya coins.</p>` : ""}
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-    ${adScreenHtml(state.ads[0], 0)}
-    ${adScreenHtml(state.ads[1], 1)}
+    ${state.ads.length>0 ? state.ads.map((ad,idx)=>adScreenHtml(ad,idx)).join("") : adScreenHtml(null,0)}
   </div>`;
 }
 
@@ -766,6 +828,84 @@ function blockAdsHtml(){
   return `<button data-action="buy-blockads" ${canBuy ? "" : "disabled"} class="mb-8 px-5 py-2.5 rounded-full font-bold text-sm ${canBuy ? "bg-rose-500 hover:bg-rose-400 text-slate-950" : "bg-slate-800 text-slate-500 cursor-not-allowed"}">🚫 Zuia Matangazo (🪙 ${cost})</button>`;
 }
 
+/* ================= Help Center: AI Assistant, FAQ, Contact Support, Game Request, Report ================= */
+const FAQ_ITEMS = [
+  { q:"Jinsi ya kupakua game?", a:"Ingia kwenye akaunti yako, fungua game unayoitaka, kisha bofya kitufe cha APK/OBB/Data. Game za Bure zinapakuliwa moja kwa moja; za Kulipia zinahitaji malipo, Coins, au VIP." },
+  { q:"Ninahitaji Emulator gani?", a:"Kwenye ukurasa wa game (Game Details), angalia sehemu ya 'Emulator' — itaonesha jina la emulator na link yake ya kupakua." },
+  { q:"Coins ni nini na zinapatikanaje?", a:"Coins ni sarafu ya ndani ya MaherGamingStore. Zipate kwa: kutazama matangazo, kununua kwa pesa (tab ya Coins), au Spin. Zinaweza kutumika kufungua game, kuzuia matangazo, au VIP." },
+  { q:"VIP ni nini?", a:"VIP inakupa game ZOTE bila malipo ya ziada, na bila kusubiri matangazo, kwa muda uliolipia. Nunua kwenye tab ya Coins." },
+  { q:"Malipo yangu yanachukua muda gani?", a:"Baada ya kutuma namba na picha ya muamala, admin anahakiki kwa mikono — kwa kawaida ndani ya masaa machache." },
+  { q:"Marketplace inafanyaje kazi?", a:"Unaweza kuweka bidhaa yako (kifaa cha gaming) iuzwe. Admin anaihakiki kabla haijaonekana kwa umma." },
+  { q:"Nimesahau password, nifanyeje?", a:"Kwa sasa huduma ya 'forgot password' haipo. Wasiliana na admin kupitia namba iliyo hapa chini kwa msaada." },
+];
+function helpAiPrompt(q){ return `Nataka msaada kuhusu: ${q}`; }
+function renderHelp(){
+  const supportPhone = state.settings.paymentPhone || "";
+  const supportNetwork = state.settings.paymentNetwork || "";
+  const waLink = supportPhone ? `https://wa.me/${supportPhone.replace(/[^0-9]/g,"").replace(/^0/,"255")}` : "";
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🤖</span><h2 class="font-bold">Help Center</h2></div>
+  <p class="text-slate-500 text-xs mb-5">Msaada wa haraka, maswali ya kawaida, na njia za kuwasiliana nasi.</p>
+
+  <div class="bg-gradient-to-br from-amber-500/15 to-violet-500/15 border border-slate-800 rounded-2xl p-5 mb-6 text-center">
+    <p class="text-3xl mb-2">🤖</p>
+    <p class="font-bold mb-1">ALTAImaher AI Assistant</p>
+    <p class="text-xs text-slate-400 mb-3">Uliza chochote — malipo, coins, VIP, emulator, marketplace, account n.k.</p>
+    <button data-action="open-chat" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-full">💬 Anza Kuongea na AI</button>
+  </div>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+    ${[["🎮","Game Help","download game, emulator"],["💳","Payment Help","malipo, coins, VIP"],["👤","Account Help","akaunti, password"],["⚙️","Technical Help","tatizo la kiufundi"]].map(([icon,label,q])=>`
+      <button data-action="ask-ai-topic" data-q="${esc(q)}" class="bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-3 text-center glow-card">
+        <p class="text-xl mb-1">${icon}</p><p class="text-[11px] font-bold">${label}</p>
+      </button>`).join("")}
+  </div>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6">
+    <h3 class="font-bold text-sm mb-3">📞 Contact Support</h3>
+    ${supportPhone ? `
+    <p class="text-xs text-slate-400 mb-3">${esc(supportNetwork)} · <span class="font-mono text-slate-200">${esc(supportPhone)}</span></p>
+    <div class="grid grid-cols-3 gap-2">
+      <a href="tel:${supportPhone}" class="flex flex-col items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg py-2.5 text-[11px] font-bold text-emerald-400">📞 Call</a>
+      <a href="${waLink}" target="_blank" rel="noreferrer" class="flex flex-col items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg py-2.5 text-[11px] font-bold text-emerald-400">🟢 WhatsApp</a>
+      <button data-action="copy-support-number" data-number="${supportPhone}" class="flex flex-col items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg py-2.5 text-[11px] font-bold text-amber-300">📋 Copy</button>
+    </div>` : `<p class="text-xs text-slate-500">Namba ya msaada bado haijawekwa na admin.</p>`}
+  </div>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6">
+    <h3 class="font-bold text-sm mb-3">❓ Frequently Asked Questions</h3>
+    <div class="space-y-2">
+      ${FAQ_ITEMS.map((f,i) => `
+        <details class="bg-slate-950/60 rounded-lg px-3 py-2">
+          <summary class="text-xs font-bold cursor-pointer">${esc(f.q)}</summary>
+          <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">${esc(f.a)}</p>
+        </details>`).join("")}
+    </div>
+  </div>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 mb-6">
+    <h3 class="font-bold text-sm mb-3">🎮 Request a Game</h3>
+    <p class="text-[11px] text-slate-500 mb-3">Game haipo kwenye Duka? Tuombee tuiongeze.</p>
+    ${state.user ? `
+    <div class="flex flex-col sm:flex-row gap-2">
+      <input id="req-title" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Jina la game" />
+      <select id="req-platform" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+        <option>Android</option><option>PC</option><option>PSP</option><option>Wii</option><option>Nyingine</option>
+      </select>
+      <button data-action="submit-game-request" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap">Tuma</button>
+    </div>` : `<p class="text-[11px] text-amber-300">Ingia kwanza ili uweze kuomba game.</p>`}
+  </div>
+
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+    <h3 class="font-bold text-sm mb-3">📝 Report a Problem</h3>
+    ${state.user ? `
+    <div class="flex flex-col sm:flex-row gap-2">
+      <input id="report-text" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Eleza tatizo lako..." />
+      <button data-action="submit-report" class="bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold text-xs px-4 py-2 rounded-lg whitespace-nowrap">Tuma Ripoti</button>
+    </div>` : `<p class="text-[11px] text-amber-300">Ingia kwanza ili uweze kutuma ripoti.</p>`}
+  </div>`;
+}
+
 function skeletonGridHtml(count){
   count = count || 8;
   return `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -780,6 +920,14 @@ function skeletonGridHtml(count){
       </div>`).join("")}
   </div>`;
 }
+function syncMarketFormFromDom(){
+  const f = state.marketForm;
+  const g = (id) => document.getElementById(id);
+  if(g("mk-name")) f.productName = g("mk-name").value;
+  if(g("mk-price")) f.price = g("mk-price").value;
+  if(g("mk-phone")) f.sellerPhone = g("mk-phone").value;
+  if(g("mk-category")) f.category = g("mk-category").value;
+}
 function _renderApp(){
   const app = document.getElementById("app");
   if(!state.loaded){
@@ -787,11 +935,16 @@ function _renderApp(){
     renderHeader(); renderNav(); renderBottomNav();
     return;
   }
+  /* keep whatever the person already typed in the "sell your product" form before the
+     screen rebuilds — without this, the periodic auto-refresh was erasing it mid-typing
+     (this was the marketplace complaint reported by customers) */
+  if(state.tab==="market") syncMarketFormFromDom();
   if(state.tab==="home") app.innerHTML = renderHome();
   else if(state.tab==="store") app.innerHTML = renderStore();
   else if(state.tab==="coins") app.innerHTML = renderCoins();
   else if(state.tab==="ads") app.innerHTML = renderAds();
   else if(state.tab==="market") app.innerHTML = renderMarket();
+  else if(state.tab==="help") app.innerHTML = renderHelp();
   else if(state.tab==="library") app.innerHTML = renderLibrary();
   else if(state.tab==="account") app.innerHTML = renderAccount();
   renderHeader();
@@ -817,8 +970,7 @@ let adTimerHandles = [];
 function clearAdTimers(){ adTimerHandles.forEach(clearInterval); adTimerHandles = []; }
 function startAdTimers(){
   clearAdTimers();
-  [0,1].forEach(idx => {
-    const ad = state.ads[idx];
+  state.ads.forEach((ad, idx) => {
     if(!ad || !state.user) return;
     const claimedView = state.claims.some(c=>c.adId===ad.id && c.userPhone===state.user.phone && c.kind==="view");
     if(claimedView) return;
@@ -885,6 +1037,7 @@ function gameDetailModalHtml(gameId){
         <div class="absolute bottom-3 left-4 right-4">
           <h2 class="brandfont text-xl sm:text-2xl font-extrabold text-white drop-shadow">${esc(g.title)}</h2>
           <div class="flex items-center gap-2 mt-1">${starsHtml(rating.avg,"text-sm")}<span class="text-xs text-slate-300">${rating.avg.toFixed(1)} (${rating.count} reviews)</span></div>
+          ${g.adminRating ? `<div class="flex items-center gap-2 mt-1" title="Rating rasmi ya Admin">${starsHtmlHalf(g.adminRating,"text-sm")}<span class="text-xs text-violet-300">🛡️ Official Rating ${Number(g.adminRating).toFixed(1)}</span></div>` : ""}
         </div>
       </div>
       <div class="p-4 sm:p-5">
@@ -921,6 +1074,8 @@ function gameDetailModalHtml(gameId){
 
         ${g.trailerUrl ? `<div class="mb-4"><h3 class="text-xs font-bold text-slate-400 mb-2">TRAILER</h3>
           <div class="aspect-video rounded-lg overflow-hidden bg-slate-900">${ytEmbed(g.trailerUrl)}</div></div>` : ""}
+        ${g.setupVideoUrl ? `<div class="mb-4"><h3 class="text-xs font-bold text-slate-400 mb-2">🎥 JINSI YA KUSANIDI/KUFUNGA GAME HII (video)</h3>
+          <div class="aspect-video rounded-lg overflow-hidden bg-slate-900">${ytEmbed(g.setupVideoUrl)}</div></div>` : ""}
 
         <div class="mb-4 bg-slate-900/50 border border-slate-800 rounded-lg p-3">
           <h3 class="text-xs font-bold text-emerald-400 mb-2">✅ TRUST & SAFETY</h3>
@@ -1242,6 +1397,15 @@ function sendChat(){
   input.value = "";
   renderChat();
 }
+function openChatWidget(prefill){
+  document.getElementById("chat-box").classList.remove("hidden");
+  renderChat();
+  if(prefill){
+    chatMsgs.push({from:"user", text: prefill});
+    chatMsgs.push({from:"bot", text: replyFromBot(prefill)});
+    renderChat();
+  }
+}
 document.getElementById("chat-toggle").addEventListener("click", () => {
   document.getElementById("chat-box").classList.toggle("hidden");
   renderChat();
@@ -1287,6 +1451,66 @@ document.addEventListener("click", async (e) => {
   const action = act.dataset.action;
 
   if(action === "open-auth"){ openModal({type:"auth", mode:"login"}); return; }
+
+  if(action === "toggle-notifs"){
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    state.notifPanelOpen = !state.notifPanelOpen;
+    if(state.notifPanelOpen){
+      const users = await getJSON(K.users, []);
+      const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+      if(uIdx>=0){ users[uIdx].lastSeenNotifAt = Date.now(); await setJSON(K.users, users); state.user = users[uIdx]; }
+    }
+    renderHeader();
+    return;
+  }
+  if(action === "open-chat"){ openChatWidget(); return; }
+  if(action === "ask-ai-topic"){ openChatWidget(act.dataset.q); return; }
+  if(action === "copy-support-number"){
+    const num = act.dataset.number;
+    if(navigator.clipboard && num) navigator.clipboard.writeText(num).catch(()=>{});
+    act.textContent = "✅ Copied";
+    setTimeout(() => { act.innerHTML = "📋 Copy"; }, 1500);
+    return;
+  }
+  if(action === "submit-game-request"){
+    if(!state.user) return;
+    const title = document.getElementById("req-title").value.trim();
+    const platform = document.getElementById("req-platform").value;
+    if(!title) return;
+    const next = [...state.gameRequests, { id: uid(), kind:"game", title, platform, username: state.user.username, userPhone: state.user.phone, status:"pending", submittedAt: Date.now() }];
+    const ok = await setJSON(K.gameRequests, next);
+    if(ok){ state.gameRequests = next; renderApp(); alert("Ombi lako limetumwa — asante!"); }
+    return;
+  }
+  if(action === "submit-report"){
+    if(!state.user) return;
+    const text = document.getElementById("report-text").value.trim();
+    if(!text) return;
+    const next = [...state.gameRequests, { id: uid(), kind:"report", title: text, username: state.user.username, userPhone: state.user.phone, status:"pending", submittedAt: Date.now() }];
+    const ok = await setJSON(K.gameRequests, next);
+    if(ok){ state.gameRequests = next; renderApp(); alert("Ripoti yako imetumwa — asante!"); }
+    return;
+  }
+  if(action === "claim-daily-reward"){
+    if(!state.user) return;
+    const today = new Date().toISOString().slice(0,10);
+    if(state.user.lastRewardClaimAt === today) return;
+    const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const rewards = state.dailyRewards;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){
+      const wasConsecutive = users[uIdx].lastRewardClaimAt === yesterday;
+      const streak = wasConsecutive ? Math.min((users[uIdx].rewardStreak||0)+1, rewards.length-1) : 0;
+      const amount = rewards[streak];
+      users[uIdx].coins = (users[uIdx].coins||0) + amount;
+      users[uIdx].rewardStreak = streak+1 >= rewards.length ? 0 : streak+1;
+      users[uIdx].lastRewardClaimAt = today;
+      const ok = await setJSON(K.users, users);
+      if(ok){ state.user = users[uIdx]; renderApp(); }
+    }
+    return;
+  }
   if(action === "close-modal"){ payScreenshotData = null; closeModal(); return; }
   if(action === "logout"){ state.user = null; renderApp(); return; }
   if(action === "auth-mode"){ openModal({type:"auth", mode: act.dataset.mode}); return; }

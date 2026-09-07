@@ -36,7 +36,8 @@ const DB_URL = "https://mahergamingstore-default-rtdb.firebaseio.com";
 const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/payments",
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
-  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice" };
+  marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
+  notifications:"mgs/notifications", gameRequests:"mgs/gameRequests", dailyRewards:"mgs/dailyRewards" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -65,6 +66,14 @@ async function setJSON(key, value){
 }
 const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
 const esc = (s) => (s || "").toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function adminStarsPreview(value){
+  const v = Math.max(0, Math.min(5, Math.round((Number(value)||0)*2)/2));
+  let out = "";
+  for(let i=1;i<=5;i++){
+    if(v>=i) out += "★"; else if(v>=i-0.5) out += "⯨"; else out += "☆";
+  }
+  return out + ` <span class="text-slate-500 text-xs">(${v || 0})</span>`;
+}
 function fileToDataUrl(file, cb){ const reader = new FileReader(); reader.onload = () => cb(reader.result); reader.onerror = () => cb(null); reader.readAsDataURL(file); }
 /* compresses/resizes an uploaded image before storing it, so uploads are fast and reliable.
    Small files skip the canvas step entirely (fastest, most reliable path). Bigger files get
@@ -133,7 +142,7 @@ const emptyGameForm = { title:"", image:"", category:"Bure", genre:"Action", coi
   linkApk:"", linkObb:"", linkData:"", platform:"PC", needsEmulator:false, emulatorImage:"", emulatorCategory:"",
   emulatorLink:"", firmwareLink:"", prodKeysLink:"", trending:false,
   description:"", reqMin:"", reqRec:"", fileSize:"", version:"", releaseDate:"", trailerUrl:"", compatibility:"",
-  screenshots:[] };
+  screenshots:[], adminRating:"", setupVideoUrl:"" };
 let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settings:{}, payments:[],
   stats:{ visits:0, dailyDownloads:{}, downloadsLog:[] },
   gameForm: { ...emptyGameForm },
@@ -150,6 +159,11 @@ let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settin
   videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 },
   adminAdvice: [],
   noteForm: { text:"" },
+  notifications: [],
+  notifForm: { type:"announcement", title:"", message:"" },
+  gameRequests: [],
+  dailyRewards: [10,15,20,25,30,40,60],
+  rewardsLoaded: false,
 };
 
 /* ================= focus-preserving render wrapper ================= */
@@ -195,6 +209,8 @@ function syncGameFormFromDom(){
   if(g("g-reqrec")) f.reqRec = g("g-reqrec").value;
   if(g("g-compatibility")) f.compatibility = g("g-compatibility").value;
   if(g("g-trailer")) f.trailerUrl = g("g-trailer").value;
+  if(g("g-admin-rating")) f.adminRating = g("g-admin-rating").value;
+  if(g("g-setup-video")) f.setupVideoUrl = g("g-setup-video").value;
   if(g("g-needs-emu")) f.needsEmulator = g("g-needs-emu").checked;
   if(g("g-trending")) f.trending = g("g-trending").checked;
 }
@@ -247,18 +263,29 @@ function syncNoteFormFromDom(){
   const g = (id) => document.getElementById(id);
   if(g("note-text")) state.noteForm.text = g("note-text").value;
 }
-function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); syncSpinFormFromDom(); syncPkgFormFromDom(); syncVipFormFromDom(); syncVideoAdFormFromDom(); syncNoteFormFromDom(); }
+function syncNotifFormFromDom(){
+  const f = state.notifForm;
+  const g = (id) => document.getElementById(id);
+  if(g("notif-type")) f.type = g("notif-type").value;
+  if(g("notif-title")) f.title = g("notif-title").value;
+  if(g("notif-message")) f.message = g("notif-message").value;
+}
+function syncRewardsFormFromDom(){
+  state.dailyRewards.forEach((r,i) => { const el = document.getElementById(`reward-day-${i}`); if(el) state.dailyRewards[i] = el.value; });
+}
+function syncAllForms(){ syncGameFormFromDom(); syncAdFormFromDom(); syncTourFormFromDom(); syncSettingsFormFromDom(); syncSpinFormFromDom(); syncPkgFormFromDom(); syncVipFormFromDom(); syncVideoAdFormFromDom(); syncNoteFormFromDom(); syncNotifFormFromDom(); syncRewardsFormFromDom(); }
 let skipFormSync = false; // set true right before a render that must NOT pull stale values back from the old DOM (e.g. loading a game into the form to edit it)
 
 let spinConfigLoaded = false; // spinConfig is only pulled from Firebase ONCE — after that it's owned by
 // the on-screen form (like gameForm/adForm), so periodic refreshes never wipe an image you just
 // uploaded before you hit "Hifadhi Spin". This was the cause of uploaded pictures "disappearing".
 async function refresh(){
-  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv] = await Promise.all([
+  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv,nt,gr,dr] = await Promise.all([
     getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
+    getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
   ]);
   state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
   if(!spinConfigLoaded){
@@ -272,6 +299,9 @@ async function refresh(){
   state.vipPlans = vp || [];
   if(!videoAdLoaded){ state.videoAd = va && typeof va === "object" ? va : { videoUrl:"", watchSeconds:10, blockAdsCost:0 }; videoAdLoaded = true; }
   state.adminAdvice = adv || [];
+  state.notifications = nt || [];
+  state.gameRequests = gr || [];
+  if(!state.rewardsLoaded){ state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60]; state.rewardsLoaded = true; }
 }
 let videoAdLoaded = false; // same reasoning as spinConfigLoaded — protects the settings form from being wiped mid-edit
 
@@ -283,12 +313,13 @@ function badge(text, tone){
 
 /* ================= nav ================= */
 function renderNav(){
-  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
+  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["engage","🔔 Engage"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
   const pendingCount = state.payments.filter(p=>p.status==="pending" && p.type!=="coin").length + state.payments.filter(p=>p.type==="coin" && p.status==="pending").length;
   const marketPending = state.marketplace.filter(m=>m.status==="pending").length;
+  const requestsPending = state.gameRequests.filter(r=>r.status==="pending").length;
   document.getElementById("nav").innerHTML = items.map(([key,label]) => `
     <button data-tab="${key}" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${state.tab===key ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:bg-slate-900"}">
-      ${label}${key==="payments" && pendingCount>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${pendingCount}</span>` : ""}${key==="market" && marketPending>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${marketPending}</span>` : ""}
+      ${label}${key==="payments" && pendingCount>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${pendingCount}</span>` : ""}${key==="market" && marketPending>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${marketPending}</span>` : ""}${key==="engage" && requestsPending>0 ? `<span class="ml-auto bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">${requestsPending}</span>` : ""}
     </button>`).join("");
 }
 
@@ -420,8 +451,15 @@ function renderGames(){
           <option value="medium" ${f.compatibility==="medium"?"selected":""}>⚠️ Medium device</option>
           <option value="high" ${f.compatibility==="high"?"selected":""}>🔥 High-end device</option>
         </select></label>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">⭐ Rating ya Admin (ubora wa game — nyota 0-5, unaweza nusu nyota)</span>
+        <div class="flex items-center gap-3">
+          <input id="g-admin-rating" type="number" min="0" max="5" step="0.5" value="${esc(f.adminRating)}" class="w-24 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="4.5" />
+          <span class="text-amber-400 text-lg" id="g-admin-rating-preview">${adminStarsPreview(f.adminRating)}</span>
+        </div></label>
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Trailer Link (YouTube, hiari)</span>
         <input id="g-trailer" value="${esc(f.trailerUrl)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/watch?v=..." /></label>
+      <label class="block mb-4"><span class="block text-xs font-semibold text-slate-400 mb-1">🎥 Video ya Kusanidi/Kufunga Game (maelekezo — mtu ajifunze jinsi ya kuiweka)</span>
+        <input id="g-setup-video" value="${esc(f.setupVideoUrl)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/watch?v=..." /></label>
       <label class="block mb-4"><span class="block text-xs font-semibold text-slate-400 mb-1">Screenshots (unaweza kuongeza kadhaa)</span>
         <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer mb-2">
           <span>⬆ Bofya kuongeza screenshot</span>
@@ -462,7 +500,7 @@ function renderAds(){
   return `
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
     <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-      <h3 class="font-bold mb-3">➕ Ongeza Tangazo (Screen ${Math.min(state.ads.length+1,2)})</h3>
+      <h3 class="font-bold mb-3">➕ Ongeza Tangazo (Screen ${state.ads.length+1})</h3>
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Tangazo</span>
         <label class="flex items-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 px-3 text-xs text-slate-400 cursor-pointer">
           <span id="a-image-label">${f.image ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
@@ -473,10 +511,10 @@ function renderAds(){
       <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Link</span>
         <input id="a-link" value="${esc(f.link)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://..." /></label>
       <button data-action="save-ad" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Hifadhi Tangazo</button>
-      <p class="text-[11px] text-slate-500 mt-2">Kumbuka: website inaonesha screen mbili tu za matangazo kwa wakati mmoja.</p>
+      <p class="text-[11px] text-slate-500 mt-2">Unaweza kuongeza matangazo mengi upendavyo — hakuna kikomo.</p>
     </div>
     <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
-      <h3 class="font-bold mb-3">Matangazo Yaliyopo</h3>
+      <h3 class="font-bold mb-3">Matangazo Yaliyopo (${state.ads.length})</h3>
       <div class="space-y-3">
         ${state.ads.map((a,i)=>`
           <div class="flex items-center gap-3 bg-slate-950/60 rounded-lg p-2">
@@ -640,6 +678,75 @@ function renderCoinsPanel(){
 }
 
 /* ================= payments panel ================= */
+/* ================= engage panel: push notifications, daily rewards, game requests ================= */
+const REQUEST_STATUSES = ["pending","searching","added","rejected"];
+const REQUEST_STATUS_LABEL = { pending:"⏱ Pending", searching:"🔎 Searching", added:"✅ Added", rejected:"✖ Rejected" };
+function renderEngagePanel(){
+  const nf = state.notifForm;
+  const gameReqs = state.gameRequests.filter(r=>r.kind==="game");
+  const reports = state.gameRequests.filter(r=>r.kind==="report");
+  return `
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
+    <h3 class="font-bold mb-3">🔔 Tuma Notification kwa Watumiaji Wote</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+      <label class="block"><span class="block text-[11px] text-slate-500 mb-1">Aina</span>
+        <select id="notif-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
+          <option value="announcement" ${nf.type==="announcement"?"selected":""}>📢 Tangazo</option>
+          <option value="game" ${nf.type==="game"?"selected":""}>🎮 Game Mpya</option>
+          <option value="update" ${nf.type==="update"?"selected":""}>🆙 Update</option>
+          <option value="vip" ${nf.type==="vip"?"selected":""}>🌟 VIP Offer</option>
+          <option value="reward" ${nf.type==="reward"?"selected":""}>🎁 Reward</option>
+        </select></label>
+      <label class="block sm:col-span-2"><span class="block text-[11px] text-slate-500 mb-1">Kichwa</span>
+        <input id="notif-title" value="${esc(nf.title)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="mfano: Game Mpya Imewekwa!" /></label>
+    </div>
+    <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Ujumbe</span>
+      <textarea id="notif-message" rows="2" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">${esc(nf.message)}</textarea></label>
+    <button data-action="push-notification" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Tuma Notification</button>
+    <div class="mt-4 space-y-2 max-h-48 overflow-y-auto">
+      ${state.notifications.slice().reverse().slice(0,15).map(n => `
+        <div class="flex items-start justify-between gap-2 bg-slate-950/60 rounded-lg p-2 text-xs">
+          <div><p class="font-bold text-slate-200">${esc(n.title)}</p><p class="text-slate-500">${esc(n.message)} · ${new Date(n.at).toLocaleString()}</p></div>
+          <button data-action="remove-notification" data-id="${n.id}" class="text-rose-400 flex-shrink-0">✖</button>
+        </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna notification.</p>`}
+    </div>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
+    <h3 class="font-bold mb-3">🎁 Daily Rewards (Coins kwa kila siku ya mfululizo)</h3>
+    <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-3">
+      ${state.dailyRewards.map((r,i) => `
+        <label class="block"><span class="block text-[10px] text-slate-500 mb-1 text-center">Siku ${i+1}</span>
+          <input id="reward-day-${i}" type="number" min="0" value="${esc(r)}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-sm text-center" /></label>`).join("")}
+    </div>
+    <button data-action="save-daily-rewards" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Hifadhi Daily Rewards</button>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4 mb-5">
+    <h3 class="font-bold mb-3">🎮 Game Requests (${gameReqs.length})</h3>
+    <div class="space-y-2 max-h-72 overflow-y-auto">
+      ${gameReqs.slice().reverse().map(r => `
+        <div class="flex items-center justify-between gap-2 bg-slate-950/60 rounded-lg p-2 text-xs">
+          <div><p class="font-bold text-slate-200">${esc(r.title)}</p><p class="text-slate-500">${esc(r.platform||"—")} · ${esc(r.username)} · ${new Date(r.submittedAt).toLocaleDateString()}</p></div>
+          <select data-action="set-request-status" data-id="${r.id}" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px]">
+            ${REQUEST_STATUSES.map(s=>`<option value="${s}" ${r.status===s?"selected":""}>${REQUEST_STATUS_LABEL[s]}</option>`).join("")}
+          </select>
+        </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna maombi ya game.</p>`}
+    </div>
+  </div>
+
+  <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
+    <h3 class="font-bold mb-3">📝 Ripoti za Matatizo (${reports.length})</h3>
+    <div class="space-y-2 max-h-56 overflow-y-auto">
+      ${reports.slice().reverse().map(r => `
+        <div class="flex items-center justify-between gap-2 bg-slate-950/60 rounded-lg p-2 text-xs">
+          <div><p class="text-slate-200">${esc(r.title)}</p><p class="text-slate-500">${esc(r.username)} · ${new Date(r.submittedAt).toLocaleDateString()}</p></div>
+          <button data-action="remove-request" data-id="${r.id}" class="text-rose-400">Futa</button>
+        </div>`).join("") || `<p class="text-slate-600 text-xs">Bado hakuna ripoti.</p>`}
+    </div>
+  </div>`;
+}
+
 function renderPayments(){
   const cash = state.payments.filter(p=>p.type==="game" || p.type==="tournament" || p.type==="vip");
   const coinReqs = state.payments.filter(p=>p.type==="coin");
@@ -797,12 +904,19 @@ function _render(){
   else if(state.tab==="ads") main.innerHTML = renderAds();
   else if(state.tab==="market") main.innerHTML = renderMarketPanel();
   else if(state.tab==="coins") main.innerHTML = renderCoinsPanel();
+  else if(state.tab==="engage") main.innerHTML = renderEngagePanel();
   else if(state.tab==="payments") main.innerHTML = renderPayments();
   else if(state.tab==="users") main.innerHTML = renderUsers();
 }
 function render(){ withFocusPreserved(_render); }
 
 /* ================= file input handling ================= */
+document.addEventListener("input", (e) => {
+  if(e.target.id === "g-admin-rating"){
+    const preview = document.getElementById("g-admin-rating-preview");
+    if(preview) preview.innerHTML = adminStarsPreview(e.target.value);
+  }
+});
 document.addEventListener("change", (e) => {
   if(e.target.id === "g-image" && e.target.files[0]){ document.getElementById("g-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.image = d; document.getElementById("g-image-label").textContent = "Picha imewekwa ✔"; }); }
   if(e.target.id === "g-emu-image" && e.target.files[0]){ document.getElementById("g-emu-image-label").textContent = "Inasindika picha..."; compressImage(e.target.files[0], d => { state.gameForm.emulatorImage = d; document.getElementById("g-emu-image-label").textContent = "Picha imewekwa ✔"; }); }
@@ -818,6 +932,15 @@ document.addEventListener("change", (e) => {
   if(e.target.dataset && e.target.dataset.spinImage !== undefined && e.target.files[0]){
     const i = Number(e.target.dataset.spinImage);
     compressImage(e.target.files[0], d => { state.spinConfig.symbols[i].image = d; render(); });
+  }
+  if(e.target.dataset && e.target.dataset.action === "set-request-status"){
+    const id = e.target.dataset.id;
+    const status = e.target.value;
+    (async () => {
+      const next = state.gameRequests.map(r => r.id===id ? {...r, status} : r);
+      const ok = await setJSON(K.gameRequests, next);
+      if(ok){ state.gameRequests = next; } else { alert("Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."); }
+    })();
   }
 });
 
@@ -857,6 +980,8 @@ document.addEventListener("click", async (e) => {
     f.reqRec = document.getElementById("g-reqrec").value.trim();
     f.compatibility = document.getElementById("g-compatibility").value;
     f.trailerUrl = normalizeUrl(document.getElementById("g-trailer").value.trim());
+    f.adminRating = document.getElementById("g-admin-rating").value.trim();
+    f.setupVideoUrl = normalizeUrl(document.getElementById("g-setup-video").value.trim());
     if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
     let nextGames;
     if(state.editingGameId){
@@ -920,14 +1045,7 @@ document.addEventListener("click", async (e) => {
     f.description = document.getElementById("a-desc").value.trim();
     f.link = normalizeUrl(document.getElementById("a-link").value.trim());
     if(!f.image || !f.link){ alert("Weka picha na link ya tangazo."); return; }
-    let nextAds;
-    if(state.ads.length >= 2){
-      const ok = confirm("Tayari kuna matangazo 2 (screen mbili). Ongeza hii itabadilisha ya kwanza. Endelea?");
-      if(!ok) return;
-      nextAds = [{ id: uid(), ...f }, state.ads[1]].filter(Boolean);
-    } else {
-      nextAds = [...state.ads, { id: uid(), ...f }];
-    }
+    const nextAds = [...state.ads, { id: uid(), ...f }];
     const saved = await setJSON(K.ads, nextAds);
     if(!saved){ alert("Imeshindwa kuhifadhi tangazo — angalia mtandao wako kisha jaribu tena (jaribu picha nyepesi zaidi)."); return; }
     state.adForm = { image:"", description:"", link:"" };
@@ -986,6 +1104,36 @@ document.addEventListener("click", async (e) => {
   }
   if(action === "remove-note"){
     await setJSON(K.adminAdvice, state.adminAdvice.filter(n=>n.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+
+  if(action === "push-notification"){
+    syncNotifFormFromDom();
+    const f = state.notifForm;
+    if(!f.title.trim() || !f.message.trim()){ alert("Weka kichwa na ujumbe wa notification."); return; }
+    const next = [...state.notifications, { id: uid(), type: f.type, title: f.title.trim(), message: f.message.trim(), at: Date.now() }];
+    const ok = await setJSON(K.notifications, next);
+    if(!ok){ alert("Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."); return; }
+    state.notifForm = { type:"announcement", title:"", message:"" };
+    await refresh(); render();
+    return;
+  }
+  if(action === "remove-notification"){
+    await setJSON(K.notifications, state.notifications.filter(n=>n.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+  if(action === "save-daily-rewards"){
+    syncRewardsFormFromDom();
+    const rewards = state.dailyRewards.map(r => Math.max(0, Number(r)||0));
+    const ok = await setJSON(K.dailyRewards, rewards);
+    if(!ok){ alert("Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."); return; }
+    state.dailyRewards = rewards;
+    render();
+    alert("Daily Rewards zimehifadhiwa!");
+    return;
+  }
+  if(action === "remove-request"){
+    await setJSON(K.gameRequests, state.gameRequests.filter(r=>r.id!==act.dataset.id)); await refresh(); render();
     return;
   }
 
