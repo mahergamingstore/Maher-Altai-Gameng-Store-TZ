@@ -115,10 +115,10 @@ const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(3
 const esc = (s) => (s || "").toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function genCode(){ const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c=""; for(let i=0;i<6;i++) c+=chars[Math.floor(Math.random()*chars.length)]; return c; }
 
-const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter"];
-const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯" };
-const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK Android Game","Yuzu/Sudachi/Eden","RPCS3 (PS3)","Xenia (Xbox360)","Cemu (WiiU)","Vita3K (PS3 Lite)"];
-const EMULATOR_ICON = { "PSP":"🎮","WinLator":"🍷","Wii":"🎱","GameCube":"🟣","PC Game":"🖥️","APK Android Game":"📱","Yuzu/Sudachi/Eden":"🧊","RPCS3 (PS3)":"🎯","Xenia (Xbox360)":"❎","Cemu (WiiU)":"🅾️","Vita3K (PS3 Lite)":"🎴" };
+const GENRES = ["Action","Sport","Adventure","FPS Shooter","Simulator (Car & Racing)","Tactical Shooter","Open World"];
+const GENRE_ICON = { "Action":"💥","Sport":"⚽","Adventure":"🗺️","FPS Shooter":"🔫","Simulator (Car & Racing)":"🏎️","Tactical Shooter":"🎯","Open World":"🌍" };
+const EMULATOR_CATEGORIES = ["PSP","WinLator","Wii","GameCube","PC Game","APK Android Game","Yuzu/Sudachi/Eden","RPCS3 (PS3)","Xenia (Xbox360)","Cemu (WiiU)","Vita3K (PS3 Lite)","PS4"];
+const EMULATOR_ICON = { "PSP":"🎮","WinLator":"🍷","Wii":"🎱","GameCube":"🟣","PC Game":"🖥️","APK Android Game":"📱","Yuzu/Sudachi/Eden":"🧊","RPCS3 (PS3)":"🎯","Xenia (Xbox360)":"❎","Cemu (WiiU)":"🅾️","Vita3K (PS3 Lite)":"🎴","PS4":"🔷" };
 const MARKET_CATEGORIES = ["Device","Console","PS (PlayStation)","Gaming Setup","Laptop","Simu (Phone)","Vifaa (Accessories)","Monitor","Keyboard & Mouse","Headset","Nyingine"];
 const MARKET_ICON = { "Device":"📟","Console":"🎮","PS (PlayStation)":"🕹️","Gaming Setup":"🖥️","Laptop":"💻","Simu (Phone)":"📱","Vifaa (Accessories)":"🔌","Monitor":"🖥️","Keyboard & Mouse":"⌨️","Headset":"🎧","Nyingine":"📦" };
 
@@ -320,6 +320,57 @@ function gameCard(g){
   const isFree = g.category === "Bure";
   const unlocked = isFree || cashApproved || coinApproved || isUserVip();
 
+  const actions = gameCardActions(g, false);
+
+  const platIcon = g.platform==="PC" ? "🖥" : g.platform==="Android" ? "📱" : "🖥📱";
+  const rating = gameRating(g.id);
+  return `
+  <div class="h-full bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden hover:border-amber-500/50 transition group glow-card flex flex-col">
+    <div class="relative aspect-video bg-slate-800 overflow-hidden cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">
+      ${g.image ? `<img src="${g.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />` : `<div class="w-full h-full flex items-center justify-center text-slate-600 text-3xl">🎮</div>`}
+      <div class="absolute top-2 left-2 flex flex-col gap-1 items-start">
+        ${g.trending ? badge("🔥 Trending","rose") : ""}
+        ${isNewGame(g) ? badge("🆕 NEW","emerald") : ""}
+      </div>
+      <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
+        ${isFree ? badge("Bure","violet") : badge("Kulipia","amber")}
+      </div>
+      <button data-action="toggle-favorite" data-id="${g.id}" class="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-lg ${isFavorite(g.id) ? "text-rose-500" : "text-white/70"}">${isFavorite(g.id) ? "❤️" : "🤍"}</button>
+    </div>
+    <div class="p-3 flex-1 flex flex-col">
+      <h4 class="font-bold text-sm text-slate-100 truncate cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">${esc(g.title)}</h4>
+      <div class="flex items-center gap-1 mt-0.5">${starsHtml(rating.avg)}<span class="text-[10px] text-slate-500 ml-1">${rating.count>0 ? `(${rating.count})` : "Bado hakuna rating"}</span></div>
+      ${g.adminRating ? `<div class="flex items-center gap-1 mt-0.5" title="Rating rasmi ya Admin">${starsHtmlHalf(g.adminRating,"text-[10px]")}<span class="text-[9px] text-violet-300 ml-1">🛡️ Official ${Number(g.adminRating).toFixed(1)}</span></div>` : ""}
+      ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">${g.originalPrice && g.salePrice ? `<span class="line-through text-slate-500 text-xs mr-1">${esc(g.originalPrice)}</span>💰 ${esc(g.salePrice)}` : `💰 ${esc(g.price)}`}</p>` : ""}
+      <div class="flex items-center flex-wrap gap-2 mt-1 text-[11px] text-slate-400">
+        <span>${platIcon} ${esc(g.platform)}</span>
+        ${g.genre ? `<span>${GENRE_ICON[g.genre]||"🎮"} ${esc(g.genre)}</span>` : ""}
+        ${g.needsEmulator ? `<span>⚙️ Emulator</span>` : ""}
+        ${g.needsEmulator && g.emulatorCategory ? `<span>${EMULATOR_ICON[g.emulatorCategory]||"🕹️"} ${esc(g.emulatorCategory)}</span>` : ""}
+        ${g.fileSize ? `<span>💾 ${esc(g.fileSize)}</span>` : ""}
+      </div>
+      <div class="mt-auto">
+        ${actions}
+        <button data-action="open-gamedetail" data-id="${g.id}" class="mt-2 w-full text-center text-[11px] font-semibold text-slate-400 hover:text-amber-300">ℹ️ Maelezo Zaidi</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* builds the buy/coin/spin/download action buttons shared between the card and the
+   game-details page. allowDownload=false replaces the real download links with a button
+   that opens the details page instead — so a person always sees the description and file
+   size (GB/MB) before they can actually download. allowDownload=true (used inside the
+   details modal itself) shows the real download links. */
+function gameCardActions(g, allowDownload){
+  const myPay = myPaymentsFor();
+  const cashApproved = myPay.some(p=>p.type==="game" && p.targetId===g.id && p.status==="approved");
+  const cashPending = myPay.some(p=>p.type==="game" && p.targetId===g.id && p.status==="pending");
+  const coinReq = myPay.find(p=>p.type==="coin" && p.targetId===g.id);
+  const coinApproved = coinReq && coinReq.status==="approved";
+  const isFree = g.category === "Bure";
+  const unlocked = isFree || cashApproved || coinApproved || isUserVip();
+
   const downloadLinks = [
     { kind:"apk", label:"APK", url:g.linkApk, color:"bg-rose-500 hover:bg-rose-400" },
     { kind:"obb", label:"OBB", url:g.linkObb, color:"bg-emerald-500 hover:bg-emerald-400" },
@@ -328,7 +379,9 @@ function gameCard(g){
 
   let actions = "";
   if(unlocked){
-    if(state.user){
+    if(!allowDownload){
+      actions = `<button data-action="open-gamedetail" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-lg">📂 Fungua ku-Download</button>`;
+    } else if(state.user){
       const needsAdGate = !isUserVip() && !state.user.adsBlocked && state.videoAd && state.videoAd.videoUrl;
       /* real <a> tags = genuine link clicks, exactly like the Emulator link — this is what
          makes them open reliably (a JS-triggered window.open() can get silently blocked).
@@ -369,44 +422,16 @@ function gameCard(g){
     }
   }
 
-  const platIcon = g.platform==="PC" ? "🖥" : g.platform==="Android" ? "📱" : "🖥📱";
-  const rating = gameRating(g.id);
-  return `
-  <div class="h-full bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden hover:border-amber-500/50 transition group glow-card flex flex-col">
-    <div class="relative aspect-video bg-slate-800 overflow-hidden cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">
-      ${g.image ? `<img src="${g.image}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />` : `<div class="w-full h-full flex items-center justify-center text-slate-600 text-3xl">🎮</div>`}
-      <div class="absolute top-2 left-2 flex flex-col gap-1 items-start">
-        ${g.trending ? badge("🔥 Trending","rose") : ""}
-        ${isNewGame(g) ? badge("🆕 NEW","emerald") : ""}
-      </div>
-      <div class="absolute top-2 right-2 flex flex-col gap-1 items-end">
-        ${isFree ? badge("Bure","violet") : badge("Kulipia","amber")}
-      </div>
-      <button data-action="toggle-favorite" data-id="${g.id}" class="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 flex items-center justify-center text-lg ${isFavorite(g.id) ? "text-rose-500" : "text-white/70"}">${isFavorite(g.id) ? "❤️" : "🤍"}</button>
-    </div>
-    <div class="p-3 flex-1 flex flex-col">
-      <h4 class="font-bold text-sm text-slate-100 truncate cursor-pointer" data-action="open-gamedetail" data-id="${g.id}">${esc(g.title)}</h4>
-      <div class="flex items-center gap-1 mt-0.5">${starsHtml(rating.avg)}<span class="text-[10px] text-slate-500 ml-1">${rating.count>0 ? `(${rating.count})` : "Bado hakuna rating"}</span></div>
-      ${g.adminRating ? `<div class="flex items-center gap-1 mt-0.5" title="Rating rasmi ya Admin">${starsHtmlHalf(g.adminRating,"text-[10px]")}<span class="text-[9px] text-violet-300 ml-1">🛡️ Official ${Number(g.adminRating).toFixed(1)}</span></div>` : ""}
-      ${!isFree && g.price ? `<p class="text-amber-300 font-bold text-sm mt-0.5">${g.originalPrice && g.salePrice ? `<span class="line-through text-slate-500 text-xs mr-1">${esc(g.originalPrice)}</span>💰 ${esc(g.salePrice)}` : `💰 ${esc(g.price)}`}</p>` : ""}
-      <div class="flex items-center flex-wrap gap-2 mt-1 text-[11px] text-slate-400">
-        <span>${platIcon} ${esc(g.platform)}</span>
-        ${g.genre ? `<span>${GENRE_ICON[g.genre]||"🎮"} ${esc(g.genre)}</span>` : ""}
-        ${g.needsEmulator ? `<span>⚙️ Emulator</span>` : ""}
-        ${g.needsEmulator && g.emulatorCategory ? `<span>${EMULATOR_ICON[g.emulatorCategory]||"🕹️"} ${esc(g.emulatorCategory)}</span>` : ""}
-      </div>
-      <div class="mt-auto">
-        ${actions}
-        ${g.needsEmulator ? [
-          g.emulatorLink ? `<a href="${g.emulatorLink}" target="_blank" rel="noreferrer" class="mt-2 flex items-center justify-center gap-1 text-[11px] font-semibold text-violet-300 hover:text-violet-200">⚙️ Emulator →</a>` : "",
-          g.firmwareLink ? `<a href="${g.firmwareLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-teal-300 hover:text-teal-200">🧩 Firmware →</a>` : "",
-          g.prodKeysLink ? `<a href="${g.prodKeysLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-yellow-300 hover:text-yellow-200">🔑 Prod Keys →</a>` : "",
-        ].join("") : ""}
-        <button data-action="open-gamedetail" data-id="${g.id}" class="mt-2 w-full text-center text-[11px] font-semibold text-slate-400 hover:text-amber-300">ℹ️ Maelezo Zaidi</button>
-      </div>
-    </div>
-  </div>`;
+  if(g.needsEmulator){
+    actions += [
+      g.emulatorLink ? `<a href="${g.emulatorLink}" target="_blank" rel="noreferrer" class="mt-2 flex items-center justify-center gap-1 text-[11px] font-semibold text-violet-300 hover:text-violet-200">⚙️ Emulator →</a>` : "",
+      g.firmwareLink ? `<a href="${g.firmwareLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-teal-300 hover:text-teal-200">🧩 Firmware →</a>` : "",
+      g.prodKeysLink ? `<a href="${g.prodKeysLink}" target="_blank" rel="noreferrer" class="mt-1 flex items-center justify-center gap-1 text-[11px] font-semibold text-yellow-300 hover:text-yellow-200">🔑 Prod Keys →</a>` : "",
+    ].join("");
+  }
+  return actions;
 }
+
 
 function horizontalRow(games){
   if(games.length===0) return `<p class="text-slate-500 text-sm">Hakuna game bado hapa.</p>`;
@@ -453,15 +478,21 @@ function heroSlideshowHtml(trending){
   return `
   <div class="relative rounded-2xl overflow-hidden border border-slate-800 h-72 sm:h-[26rem] mb-4 group">
     <div id="hero-track" class="hero-track h-full">
-      ${trending.map(g => `
+      ${trending.map(g => {
+        const rating = gameRating(g.id);
+        return `
         <div class="hero-slide relative h-full cursor-pointer" data-action="hero-slide-click" data-id="${g.id}">
           ${g.image ? `<img src="${g.image}" class="w-full h-full object-cover"/>` : `<div class="w-full h-full bg-slate-800 flex items-center justify-center text-5xl">🎮</div>`}
           <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent"></div>
           <div class="absolute bottom-3 left-4 right-4">
             <p class="brandfont font-extrabold text-lg sm:text-2xl text-white drop-shadow">${esc(g.title)}</p>
-            <p class="text-[11px] text-amber-300">${g.category==="Bure" ? "Bure — Bofya kufungua" : "Kulipia — Bofya kufungua"}</p>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+              <div class="flex items-center gap-0.5">${starsHtml(rating.avg,"text-xs")}<span class="text-[10px] text-slate-300 ml-1">${rating.count>0 ? rating.avg.toFixed(1) : "Bado hakuna rating"}</span></div>
+              ${g.adminRating ? `<div class="flex items-center gap-0.5" title="Rating rasmi ya Admin">${starsHtmlHalf(g.adminRating,"text-xs")}<span class="text-[9px] text-violet-300 ml-1">🛡️ ${Number(g.adminRating).toFixed(1)}</span></div>` : ""}
+            </div>
+            <p class="text-[11px] text-amber-300 mt-1">${g.category==="Bure" ? "Bure" : "Kulipia"}${g.fileSize ? ` · 💾 ${esc(g.fileSize)}` : ""} — Bofya kufungua</p>
           </div>
-        </div>`).join("")}
+        </div>`;}).join("")}
     </div>
     ${trending.length > 1 ? `
     <button data-action="hero-prev" class="opacity-0 group-hover:opacity-100 transition absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center">‹</button>
@@ -1090,7 +1121,7 @@ function gameDetailModalHtml(gameId){
         <div class="flex gap-2 mb-4">
           <button data-action="toggle-favorite" data-id="${g.id}" class="flex-1 flex items-center justify-center gap-2 bg-slate-900 border border-slate-700 text-sm font-bold py-2.5 rounded-lg ${isFavorite(g.id) ? "text-rose-400" : "text-slate-300"}">${isFavorite(g.id) ? "❤️ Kwenye Library" : "🤍 Weka Favorite"}</button>
         </div>
-        <div id="gamedetail-actions">${gameCard(g)}</div>
+        <div id="gamedetail-actions">${gameCardActions(g, true)}</div>
 
         <div class="mt-6 pt-4 border-t border-slate-800">
           <h3 class="text-sm font-bold mb-3">⭐ Reviews (${reviews.length})</h3>
