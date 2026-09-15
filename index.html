@@ -30,6 +30,10 @@
   @keyframes psFloatDown{0%{transform:translateY(-18vh) rotate(0deg);opacity:0;}8%{opacity:1;}92%{opacity:1;}100%{transform:translateY(112vh) rotate(-25deg);opacity:0;}}
   .spin-active{animation:spinWheelSpin 1.4s cubic-bezier(.25,.8,.4,1);}
   @keyframes spinWheelSpin{from{transform:rotate(0deg);}to{transform:rotate(1080deg);}}
+  /* Fruit Catcher mini-game */
+  #fruit-field{position:relative;width:100%;height:420px;overflow:hidden;border-radius:16px;background:linear-gradient(180deg,#0b1120,#05070b);touch-action:none;}
+  .fruit-item{position:absolute;font-size:32px;line-height:1;user-select:none;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));}
+  #fruit-basket{position:absolute;bottom:6px;width:76px;height:44px;margin-left:-38px;font-size:40px;display:flex;align-items:center;justify-content:center;user-select:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));}
 </style>
 </head>
 <body class="min-h-screen">
@@ -136,6 +140,174 @@ let state = {
   loaded: false,
   modal: null,
 };
+
+/* ================= Fruit Catcher mini-game ================= */
+const FRUIT_COIN_PER_CATCH = 5;
+const FRUIT_REPLAY_COST = 20;
+const FRUIT_GAME_SECONDS = 30;
+let fruitGame = { status:"idle", score:0, timeLeft:FRUIT_GAME_SECONDS, running:false };
+let fruitLoopHandle = null, fruitSpawnHandle = null, fruitTimerHandle = null;
+const FRUIT_EMOJIS = ["🍎","🍌","🍇","🍉","🍓","🍊","🍍","🥝"];
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function hasFreeFruitPlayToday(){ return !state.user || state.user.lastFreeGameDate !== todayStr(); }
+
+function renderGameTab(){
+  if(!state.user){
+    return `<div class="flex items-center gap-2 mb-1"><span class="text-2xl">🍎</span><h2 class="font-bold">Mchezo — Kamata Matunda</h2></div>
+    <p class="text-slate-500 text-sm mb-4">Ingia kwanza ili uweze kucheza na kupata coins.</p>
+    <button data-action="open-auth" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-sm">Ingia / Jisajili</button>`;
+  }
+  if(fruitGame.status === "playing"){
+    return `
+    <div class="flex items-center justify-between mb-2">
+      <p class="font-bold text-sm">🍎 Kamata Matunda</p>
+      <div class="flex items-center gap-3 text-sm font-bold">
+        <span class="text-amber-300">🪙 ${fruitGame.score}</span>
+        <span class="text-rose-300">⏱ ${fruitGame.timeLeft}s</span>
+      </div>
+    </div>
+    <div id="fruit-field">
+      <div id="fruit-basket" style="left:50%;">🧺</div>
+    </div>
+    <p class="text-[11px] text-slate-500 mt-2 text-center">Sogeza kidole (au mouse) ndani ya uwanja kuhamisha kikapu — epuka 💣, kamata matunda!</p>`;
+  }
+  if(fruitGame.status === "over"){
+    return `
+    <div class="flex flex-col items-center text-center py-8">
+      <p class="text-5xl mb-3">${fruitGame.lost ? "💥" : "🏁"}</p>
+      <h2 class="font-bold text-lg mb-1">${fruitGame.lost ? "Umegonga Bomu!" : "Muda Umeisha!"}</h2>
+      <p class="text-slate-400 text-sm mb-4">Umepata <span class="text-amber-300 font-bold">🪙 ${fruitGame.score}</span> coins mchezo huu.</p>
+      ${fruitPlayButtonHtml()}
+      <button data-action="fruit-back" class="mt-3 text-xs text-slate-500 underline">Rudi</button>
+    </div>`;
+  }
+  const free = hasFreeFruitPlayToday();
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-2xl">🍎</span><h2 class="font-bold">Mchezo — Kamata Matunda</h2></div>
+  <p class="text-slate-500 text-sm mb-1">Kamata matunda yanayoanguka kwa kikapu chako — kila tunda ni 🪙${FRUIT_COIN_PER_CATCH}. Epuka mabomu 💣 — ukigonga bomu, mchezo unaisha!</p>
+  <p class="text-slate-500 text-sm mb-4">Muda wa mchezo: sekunde ${FRUIT_GAME_SECONDS}.</p>
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center">
+    <p class="text-5xl mb-3">🧺</p>
+    ${free
+      ? `<p class="text-emerald-300 text-sm font-bold mb-3">🎁 Una mchezo mmoja wa BURE leo!</p>`
+      : `<p class="text-amber-300 text-xs mb-3">Umeshatumia mchezo wako wa bure leo. Mchezo mwingine unahitaji 🪙${FRUIT_REPLAY_COST}.</p>`}
+    ${fruitPlayButtonHtml()}
+  </div>`;
+}
+function fruitPlayButtonHtml(){
+  const free = hasFreeFruitPlayToday();
+  if(free) return `<button data-action="fruit-start" class="bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950 font-bold px-6 py-2.5 rounded-full text-sm">▶️ Cheza Bure</button>`;
+  const canAfford = (state.user.coins||0) >= FRUIT_REPLAY_COST;
+  return canAfford
+    ? `<button data-action="fruit-start" class="bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950 font-bold px-6 py-2.5 rounded-full text-sm">🪙 Lipa ${FRUIT_REPLAY_COST} Ucheze</button>`
+    : `<p class="text-rose-400 text-xs">Huna coins za kutosha. Ngoja kesho kwa mchezo wa bure, au nunua coins kwenye tab ya Coins.</p>`;
+}
+
+async function fruitStart(){
+  if(!state.user) return;
+  const free = hasFreeFruitPlayToday();
+  if(free){
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){ users[uIdx].lastFreeGameDate = todayStr(); await setJSON(K.users, users); state.user = users[uIdx]; }
+  } else {
+    if((state.user.coins||0) < FRUIT_REPLAY_COST) return;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){ users[uIdx].coins = Math.max(0,(users[uIdx].coins||0)-FRUIT_REPLAY_COST); await setJSON(K.users, users); state.user = users[uIdx]; }
+  }
+  fruitGame = { status:"playing", score:0, timeLeft:FRUIT_GAME_SECONDS, running:true, lost:false };
+  renderApp();
+  setTimeout(fruitEngineInit, 30); // let the DOM (#fruit-field) exist first
+}
+
+function fruitEngineInit(){
+  const field = document.getElementById("fruit-field");
+  const basket = document.getElementById("fruit-basket");
+  if(!field || !basket) return;
+  let basketPct = 50;
+  const items = []; // {el, x(%), y(px), speed, type}
+
+  function setBasketPct(p){ basketPct = Math.max(6, Math.min(94, p)); basket.style.left = basketPct + "%"; }
+  function pctFromClientX(clientX){
+    const rect = field.getBoundingClientRect();
+    return ((clientX - rect.left) / rect.width) * 100;
+  }
+  function onMove(clientX){ setBasketPct(pctFromClientX(clientX)); }
+  const onMouseMove = (e) => onMove(e.clientX);
+  const onTouchMove = (e) => { if(e.touches && e.touches[0]){ onMove(e.touches[0].clientX); e.preventDefault(); } };
+  field.addEventListener("mousemove", onMouseMove);
+  field.addEventListener("touchmove", onTouchMove, { passive:false });
+  field.addEventListener("touchstart", onTouchMove, { passive:false });
+
+  function spawn(){
+    const isBomb = Math.random() < 0.16;
+    const el = document.createElement("div");
+    el.className = "fruit-item";
+    el.textContent = isBomb ? "💣" : FRUIT_EMOJIS[Math.floor(Math.random()*FRUIT_EMOJIS.length)];
+    const x = 6 + Math.random()*88;
+    el.style.left = x + "%";
+    el.style.top = "-32px";
+    field.appendChild(el);
+    items.push({ el, x, y:-32, speed: 90 + Math.random()*70, type: isBomb ? "bomb" : "fruit" });
+  }
+  fruitSpawnHandle = setInterval(spawn, 750);
+
+  let lastT = performance.now();
+  function loop(t){
+    if(!fruitGame.running) return;
+    const dt = Math.min(0.05, (t-lastT)/1000); lastT = t;
+    const fieldH = field.clientHeight;
+    for(let i=items.length-1; i>=0; i--){
+      const it = items[i];
+      it.y += it.speed*dt;
+      it.el.style.top = it.y + "px";
+      const caughtZoneTop = fieldH - 70, caughtZoneBottom = fieldH - 10;
+      const withinBasketX = Math.abs(it.x - basketPct) < 9;
+      if(it.y >= caughtZoneTop && it.y <= caughtZoneBottom && withinBasketX){
+        it.el.remove(); items.splice(i,1);
+        if(it.type === "bomb"){ fruitEnd(true); return; }
+        fruitGame.score += FRUIT_COIN_PER_CATCH;
+        const scoreEl = document.querySelector("#app .text-amber-300");
+        if(scoreEl) scoreEl.textContent = `🪙 ${fruitGame.score}`;
+        continue;
+      }
+      if(it.y > fieldH + 40){ it.el.remove(); items.splice(i,1); }
+    }
+    fruitLoopHandle = requestAnimationFrame(loop);
+  }
+  fruitLoopHandle = requestAnimationFrame(loop);
+
+  fruitTimerHandle = setInterval(() => {
+    fruitGame.timeLeft--;
+    const timeEl = document.querySelector("#app .text-rose-300");
+    if(timeEl) timeEl.textContent = `⏱ ${fruitGame.timeLeft}s`;
+    if(fruitGame.timeLeft <= 0) fruitEnd(false);
+  }, 1000);
+
+  field._fruitCleanup = () => {
+    field.removeEventListener("mousemove", onMouseMove);
+    field.removeEventListener("touchmove", onTouchMove);
+    field.removeEventListener("touchstart", onTouchMove);
+    items.forEach(it => it.el.remove());
+  };
+}
+
+async function fruitEnd(lost){
+  if(!fruitGame.running) return;
+  fruitGame.running = false; fruitGame.lost = lost;
+  clearInterval(fruitSpawnHandle); clearInterval(fruitTimerHandle); cancelAnimationFrame(fruitLoopHandle);
+  const field = document.getElementById("fruit-field");
+  if(field && field._fruitCleanup) field._fruitCleanup();
+  if(fruitGame.score > 0 && state.user){
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===state.user.phone);
+    if(uIdx>=0){ users[uIdx].coins = (users[uIdx].coins||0) + fruitGame.score; await setJSON(K.users, users); state.user = users[uIdx]; }
+  }
+  fruitGame.status = "over";
+  renderApp();
+}
 
 document.getElementById("year").textContent = new Date().getFullYear();
 
@@ -264,7 +436,7 @@ function renderNotifPanel(){
 const NOTIF_ICON = { game:"🎮", featured:"🌟", reward:"🎁", vip:"👑", tournament:"🏆", update:"🛠️", announcement:"📢" };
 
 function renderNav(){
-  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["market","🛍️ Masoko"],["ads","📣 Matangazo"],["help","🤖 Help"]];
+  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["game","🍎 Mchezo"],["market","🛍️ Masoko"],["ads","📣 Matangazo"],["help","🤖 Help"]];
   document.getElementById("nav-tabs").innerHTML = tabs.map(([key,label]) => `
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
@@ -401,11 +573,8 @@ function gameCardActions(g, allowDownload){
       ? `<button disabled class="mt-3 w-full flex items-center justify-center gap-2 bg-slate-800 text-slate-400 text-xs font-bold py-2 rounded-lg">⏱ Pesa: inasubiri idhini</button>`
       : `<button data-action="buy" data-id="${g.id}" class="mt-3 w-full flex items-center justify-center gap-2 bg-violet-500 hover:bg-violet-400 text-slate-950 text-xs font-bold py-2 rounded-lg">🔒 Lipa Pesa</button>`;
 
-    if(state.spinConfig.symbols && state.spinConfig.symbols.length > 0){
-      const spinPending = myPay.some(p=>p.type==="game" && p.targetId===g.id && p.status==="pending" && p.method==="spin");
-      actions += spinPending
-        ? `<div class="mt-2 text-[11px] text-slate-400 text-center">⏱ Spin Win: inasubiri idhini</div>`
-        : `<button data-action="buy-spin" data-id="${g.id}" class="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-500 to-amber-500 text-slate-950 text-xs font-bold py-2 rounded-lg">🎡 Tumia Spin Win</button>`;
+    if(g.whatsappPin){
+      actions += `<button data-action="open-pinunlock" data-id="${g.id}" class="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-xs font-bold py-2 rounded-lg">🔐 Weka PIN Code (WhatsApp Group)</button>`;
     }
 
     if(g.coinCost && Number(g.coinCost) > 0){
@@ -769,7 +938,7 @@ function coinPackageCard(pkg){
 
 function spinWheelHtml(){
   const cfg = state.spinConfig;
-  const symbols = cfg.symbols || [];
+  const symbols = (cfg.symbols || []).filter(s=>s.gameId);
   if(symbols.length===0){
     return `<p class="text-slate-500 text-sm">Spin bado haijawekwa na admin.</p>`;
   }
@@ -779,16 +948,18 @@ function spinWheelHtml(){
     const angle = (i / symbols.length) * 2*Math.PI - Math.PI/2;
     const x = center + radius*Math.cos(angle) - iconSize/2;
     const y = center + radius*Math.sin(angle) - iconSize/2;
-    return { ...s, x, y };
+    const game = state.games.find(g=>g.id===s.gameId);
+    return { ...s, x, y, game };
   });
+  const wonGame = state.lastSpin ? state.games.find(g=>g.id===state.lastSpin.gameId) : null;
   return `
   <div class="flex flex-col items-center">
     <div class="relative ${state.spinning ? "spin-active" : ""}" style="width:${size}px;height:${size}px;">
       <div class="absolute inset-0 rounded-full border-4 border-amber-400/60 bg-gradient-to-br from-slate-900 to-slate-950 shadow-[0_0_30px_rgba(251,191,36,0.15)]"></div>
       <div class="absolute inset-8 rounded-full border border-dashed border-slate-700"></div>
       ${positioned.map(s => `
-        <div class="absolute rounded-full overflow-hidden border-2 ${state.lastSpin && state.lastSpin.symbolId===s.id && !state.spinning ? "border-amber-400 ring-4 ring-amber-400/50" : "border-slate-700"} bg-slate-900 flex items-center justify-center" style="left:${s.x}px;top:${s.y}px;width:${iconSize}px;height:${iconSize}px;">
-          ${s.image ? `<img src="${s.image}" class="w-full h-full object-cover"/>` : `<span class="text-2xl">❓</span>`}
+        <div class="absolute rounded-full overflow-hidden border-2 ${state.lastSpin && state.lastSpin.symbolId===s.id && !state.spinning ? "border-amber-400 ring-4 ring-amber-400/50" : "border-slate-700"} bg-slate-900 flex items-center justify-center" style="left:${s.x}px;top:${s.y}px;width:${iconSize}px;height:${iconSize}px;" title="${s.game ? esc(s.game.title) : ""}">
+          ${s.game && s.game.image ? `<img src="${s.game.image}" class="w-full h-full object-cover"/>` : `<span class="text-2xl">🎮</span>`}
         </div>`).join("")}
       <div class="absolute inset-0 flex items-center justify-center">
         <div class="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-violet-500 flex items-center justify-center text-2xl shadow-lg">🎡</div>
@@ -797,11 +968,13 @@ function spinWheelHtml(){
     <p class="text-[11px] text-slate-500 mt-3">Gharama ya kila Spin: <span class="text-amber-300 font-bold">🪙 ${cfg.costCoins||0}</span></p>
     <button data-action="spin-now" ${canSpin ? "" : "disabled"} class="mt-2 px-6 py-2.5 rounded-full font-bold text-sm ${canSpin ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "bg-slate-800 text-slate-500 cursor-not-allowed"}">${state.spinning ? "Inazunguka..." : "🎡 Spin Sasa"}</button>
     ${!state.user ? `<p class="text-amber-300 text-xs mt-2">Ingia kwanza ili uweze ku-spin.</p>` : ""}
-    ${state.lastSpin && !state.spinning ? `
+    ${wonGame && !state.spinning ? `
     <div class="mt-4 bg-slate-900/70 border border-amber-500/40 rounded-xl p-3 text-center max-w-xs">
-      <p class="text-xs text-slate-400 mb-1">🎉 Umepata:</p>
-      ${state.lastSpin.image ? `<img src="${state.lastSpin.image}" class="w-16 h-16 mx-auto rounded-lg object-cover border border-amber-400"/>` : ""}
-      <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">Piga picha ya skrini hii (screenshot), kisha utumie kama uthibitisho unapofungua game ya kulipia — chagua "🎡 Tumia Spin Win" kwenye game husika.</p>
+      <p class="text-xs text-slate-400 mb-1">🎉 Hongera! Umeshinda:</p>
+      ${wonGame.image ? `<img src="${wonGame.image}" class="w-16 h-16 mx-auto rounded-lg object-cover border border-amber-400"/>` : ""}
+      <p class="text-sm font-bold text-white mt-1">${esc(wonGame.title)}</p>
+      <p class="text-[11px] text-emerald-400 mt-1">✅ Game hii imeshafunguliwa kwenye akaunti yako — bure!</p>
+      <button data-action="open-gamedetail" data-id="${wonGame.id}" class="mt-2 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-2 rounded-lg">Fungua Game Sasa</button>
     </div>` : ""}
   </div>`;
 }
@@ -1042,6 +1215,7 @@ function renderModal(){
   if(state.modal.type === "auth") root.innerHTML = authModalHtml(state.modal.mode || "login");
   if(state.modal.type === "pay") root.innerHTML = payModalHtml(state.modal.target, state.modal.targetType, state.modal.method || "cash");
   if(state.modal.type === "coin-redeem") root.innerHTML = coinRedeemModalHtml(state.modal.request);
+  if(state.modal.type === "pinunlock") root.innerHTML = pinUnlockModalHtml(state.modal.game);
   if(state.modal.type === "buycoins") root.innerHTML = buyCoinsModalHtml(state.modal.pkg);
   if(state.modal.type === "adgate"){ root.innerHTML = adgateModalHtml(state.modal.game, state.modal.kind, state.modal.url, state.modal.label); startAdGateCountdown(); }
   if(state.modal.type === "gamedetail") root.innerHTML = gameDetailModalHtml(state.modal.gameId);
@@ -1340,6 +1514,21 @@ function coinRedeemModalHtml(request){
   </div>`;
 }
 
+function pinUnlockModalHtml(game){
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+      <button data-action="close-modal" class="absolute top-3 right-3 text-slate-500 hover:text-slate-200 text-lg">✕</button>
+      <h3 class="font-bold text-lg mb-1">🔐 Weka PIN Code</h3>
+      <p class="text-xs text-slate-500 mb-4">${esc(game.title)} — hii ni maalum kwa wanachama wa WhatsApp group. Weka PIN uliyopewa.</p>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">PIN Code</span>
+        <input id="pin-code-input" class="w-full bg-slate-900/80 border border-slate-700 focus:border-emerald-400 outline-none rounded-lg px-3 py-2 text-sm tracking-widest" placeholder="Weka PIN..." /></label>
+      <p id="pin-error" class="text-rose-400 text-xs mb-2"></p>
+      <button data-action="pin-submit" data-id="${game.id}" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-lg">Thibitisha PIN</button>
+    </div>
+  </div>`;
+}
+
 let payScreenshotData = null;
 function fileToDataUrl(file, cb){ const reader = new FileReader(); reader.onload = () => cb(reader.result); reader.onerror = () => cb(null); reader.readAsDataURL(file); }
 /* compresses/resizes an uploaded photo before storing it, so uploads are fast and reliable.
@@ -1612,10 +1801,27 @@ document.addEventListener("click", async (e) => {
     return;
   }
 
-  if(action === "buy-spin"){
+  if(action === "open-pinunlock"){
     const g = state.games.find(x=>x.id===act.dataset.id);
     if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
-    openModal({type:"pay", target:g, targetType:"game", method:"spin"});
+    if(g) openModal({type:"pinunlock", game:g});
+    return;
+  }
+  if(action === "pin-submit"){
+    const errorEl = document.getElementById("pin-error");
+    const entered = document.getElementById("pin-code-input").value.trim();
+    const g = state.games.find(x=>x.id===act.dataset.id);
+    if(!g){ errorEl.textContent = "Game haikupatikana."; return; }
+    if(!entered || entered !== String(g.whatsappPin||"").trim()){
+      errorEl.textContent = "PIN sio sahihi. Jaribu tena au wasiliana na admin."; return;
+    }
+    const payments = await getJSON(K.payments, []);
+    payments.push({ id: uid(), type:"game", targetId: g.id, targetName: g.title, userPhone: state.user.phone,
+      username: state.user.username, payerPhone: state.user.phone, screenshot:"", status:"approved",
+      submittedAt: Date.now(), method:"whatsapp-pin" });
+    const ok = await setJSON(K.payments, payments);
+    if(!ok){ errorEl.textContent = "Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."; return; }
+    closeModal(); await refreshAll(); renderApp();
     return;
   }
 
@@ -1707,7 +1913,7 @@ document.addEventListener("click", async (e) => {
 
   if(action === "spin-now"){
     const cfg = state.spinConfig;
-    const symbols = cfg.symbols || [];
+    const symbols = (cfg.symbols || []).filter(s=>s.gameId);
     if(!state.user || symbols.length===0 || state.spinning) return;
     const cost = Number(cfg.costCoins||0);
     if((state.user.coins||0) < cost) return;
@@ -1720,7 +1926,16 @@ document.addEventListener("click", async (e) => {
       let r = Math.random() * totalWeight;
       let picked = symbols[symbols.length-1];
       for(const s of symbols){ r -= Number(s.weight||1); if(r<=0){ picked = s; break; } }
-      state.lastSpin = { symbolId: picked.id, image: picked.image, at: Date.now() };
+      /* winning a slot grants that exact game for free, right away — no screenshot/proof needed */
+      const wonGame = state.games.find(g=>g.id===picked.gameId);
+      if(wonGame){
+        const payments = await getJSON(K.payments, []);
+        payments.push({ id: uid(), type:"game", targetId: wonGame.id, targetName: wonGame.title, userPhone: state.user.phone,
+          username: state.user.username, payerPhone: state.user.phone, screenshot:"", status:"approved",
+          submittedAt: Date.now(), method:"spin" });
+        await setJSON(K.payments, payments);
+      }
+      state.lastSpin = { symbolId: picked.id, gameId: picked.gameId, at: Date.now() };
       state.spinning = false;
       await refreshAll(); renderApp();
     }, 1400);
@@ -1838,7 +2053,10 @@ if(!STORAGE_OK){
   await refreshAll();
   await bumpVisit();
   renderApp();
-  setInterval(async () => { await refreshAll(); renderApp(); }, 8000);
+  setInterval(async () => {
+    if(fruitGame.running) return; // don't let the periodic refresh interrupt an active fruit-catch round
+    await refreshAll(); renderApp();
+  }, 8000);
 })();
 </script>
 </body>
