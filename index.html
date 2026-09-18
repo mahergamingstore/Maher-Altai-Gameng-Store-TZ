@@ -88,7 +88,7 @@ const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/p
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
   marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
   reviews:"mgs/reviews", notifications:"mgs/notifications", gameRequests:"mgs/gameRequests",
-  dailyRewards:"mgs/dailyRewards" };
+  dailyRewards:"mgs/dailyRewards", marketReports:"mgs/marketReports" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -132,7 +132,8 @@ let state = {
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
   spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
   marketplace: [], vipPlans: [], videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 }, adminAdvice: [],
-  marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" },
+  marketReports: [],
+  marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"", description:"", location:"", quantity:"", photos:[] },
   reviews: [], stats: { visits:0, dailyDownloads:{}, downloadsLog:[] },
   reviewForm: { rating: 5, text: "" },
   notifications: [], gameRequests: [], dailyRewards: [10,15,20,25,30,40,60],
@@ -331,19 +332,21 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st,nt,gr,dr] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st,nt,gr,dr,mr] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
     getJSON(K.reviews, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
+    getJSON(K.marketReports, []),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
   state.spinConfig=sp; state.coinPackages=cp;
   state.marketplace=mk; state.vipPlans=vp; state.videoAd=va; state.adminAdvice=adv;
   state.reviews=rv; state.stats=st; state.loaded = true;
   state.notifications=nt; state.gameRequests=gr; state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60];
+  state.marketReports=mr;
   if(state.user){
     const users = await getJSON(K.users, []);
     const fresh = users.find(u=>u.phone===state.user.phone);
@@ -862,17 +865,72 @@ function renderAds(){
 }
 
 /* ================= Marketplace: peer-to-peer product listings ================= */
+function toWhatsAppLink(phone){
+  const cleaned = (phone||"").replace(/[^0-9]/g,"").replace(/^0/,"255");
+  return `https://wa.me/${cleaned}`;
+}
 function marketCard(m){
   return `
-  <div class="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden glow-card">
+  <div class="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden glow-card cursor-pointer" data-action="open-marketdetail" data-id="${m.id}">
     <div class="relative aspect-video bg-slate-800">
       ${m.image ? `<img src="${m.image}" class="w-full h-full object-cover"/>` : `<div class="w-full h-full flex items-center justify-center text-3xl">📦</div>`}
       <div class="absolute top-2 right-2">${badge(`${MARKET_ICON[m.category]||"📦"} ${m.category}`,"violet")}</div>
+      ${m.quantity ? `<div class="absolute top-2 left-2">${badge(`📦 ${esc(m.quantity)} zilizobaki`,"emerald")}</div>` : ""}
     </div>
     <div class="p-3">
       <h4 class="font-bold text-sm truncate">${esc(m.productName)}</h4>
       <p class="text-amber-300 font-extrabold text-sm mt-0.5">💰 ${esc(m.price)}</p>
-      <a href="tel:${esc(m.sellerPhone)}" class="mt-3 w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold py-2 rounded-lg">📞 ${esc(m.sellerPhone)}</a>
+      ${m.location ? `<p class="text-[11px] text-slate-500 mt-0.5">📍 ${esc(m.location)}</p>` : ""}
+      <button class="mt-3 w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold py-2 rounded-lg">🔎 Ona Maelezo Kamili</button>
+    </div>
+  </div>`;
+}
+
+function marketDetailModalHtml(m){
+  const photos = [m.image, ...(m.photos||[])].filter(Boolean);
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl relative shadow-2xl max-h-[90vh] overflow-y-auto">
+      <button data-action="close-modal" class="absolute top-3 right-3 z-10 bg-black/60 rounded-full w-8 h-8 flex items-center justify-center text-slate-200 text-lg">✕</button>
+      <div class="aspect-video bg-slate-800">
+        ${photos[0] ? `<img src="${photos[0]}" class="w-full h-full object-cover"/>` : `<div class="w-full h-full flex items-center justify-center text-4xl">📦</div>`}
+      </div>
+      ${photos.length>1 ? `<div class="flex gap-2 p-3 overflow-x-auto no-scrollbar">${photos.map(p=>`<img src="${p}" class="w-16 h-16 rounded-lg object-cover border border-slate-800 flex-shrink-0"/>`).join("")}</div>` : ""}
+      <div class="p-4">
+        <div class="flex items-center justify-between mb-1">
+          <h3 class="font-bold text-lg">${esc(m.productName)}</h3>
+          ${badge(`${MARKET_ICON[m.category]||"📦"} ${m.category}`,"violet")}
+        </div>
+        <p class="text-amber-300 font-extrabold text-lg mb-2">💰 ${esc(m.price)}</p>
+        ${m.description ? `<p class="text-sm text-slate-300 leading-relaxed mb-3">${esc(m.description)}</p>` : ""}
+        <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-400 mb-4">
+          ${m.location ? `<div>📍 <span class="text-slate-300">${esc(m.location)}</span></div>` : ""}
+          ${m.quantity ? `<div>📦 Zilizopo: <span class="text-slate-300">${esc(m.quantity)}</span></div>` : ""}
+          <div>📅 Ilitumwa: <span class="text-slate-300">${new Date(m.submittedAt).toLocaleDateString()}</span></div>
+          <div>👤 Muuzaji: <span class="text-slate-300">${esc(m.username)}</span></div>
+        </div>
+        <div class="grid grid-cols-1 gap-2">
+          <a href="${toWhatsAppLink(m.sellerPhone)}" target="_blank" rel="noreferrer" class="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-bold py-2.5 rounded-lg">💬 WhatsApp ${esc(m.sellerPhone)}</a>
+          <a href="sms:${esc(m.sellerPhone)}" class="w-full flex items-center justify-center gap-2 bg-sky-500 hover:bg-sky-400 text-slate-950 text-sm font-bold py-2.5 rounded-lg">✉️ Tuma SMS</a>
+          <a href="tel:${esc(m.sellerPhone)}" class="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold py-2.5 rounded-lg">📞 Piga Simu</a>
+        </div>
+        <button data-action="open-reportseller" data-id="${m.id}" class="w-full mt-4 flex items-center justify-center gap-1 text-[11px] text-rose-400 hover:text-rose-300">🚩 Ripoti Muuzaji / Bidhaa Hii kwa Admin</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function reportSellerModalHtml(m){
+  return `
+  <div class="fixed inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-slate-950 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+      <button data-action="close-modal" class="absolute top-3 right-3 text-slate-500 hover:text-slate-200 text-lg">✕</button>
+      <h3 class="font-bold text-lg mb-1">🚩 Ripoti Muuzaji</h3>
+      <p class="text-xs text-slate-500 mb-4">${esc(m.productName)} — ${esc(m.username)}</p>
+      <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Eleza tatizo (udanganyifu, bidhaa bandia, n.k.)</span>
+        <textarea id="report-reason" rows="4" class="w-full bg-slate-900/80 border border-slate-700 focus:border-rose-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="Andika tatizo lako hapa..."></textarea></label>
+      <p id="report-error" class="text-rose-400 text-xs mb-2"></p>
+      <button data-action="report-seller-submit" data-id="${m.id}" class="w-full bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma Ripoti kwa Admin</button>
     </div>
   </div>`;
 }
@@ -884,19 +942,37 @@ function marketFormHtml(){
     <h3 class="font-bold mb-3">➕ Weka Bidhaa Yako Iuzwe</h3>
     <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Jina la Bidhaa</span>
       <input id="mk-name" value="${esc(f.productName)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano: PS4 Slim 500GB" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Maelezo ya Bidhaa</span>
+      <textarea id="mk-description" rows="3" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="Eleza hali ya bidhaa, vifaa vinavyoambatana nayo, n.k.">${esc(f.description)}</textarea></label>
     <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Bei</span>
       <input id="mk-price" value="${esc(f.price)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano 350,000 TZS" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Idadi Iliyopo (mizigo/vipande)</span>
+      <input id="mk-quantity" type="number" min="1" value="${esc(f.quantity)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano 3" /></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Location (Ulipo)</span>
+      <input id="mk-location" value="${esc(f.location)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="mfano Dar es Salaam, Kariakoo" /></label>
     <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Namba yako ya Simu (ya kibiashara)</span>
       <input id="mk-phone" value="${esc(f.sellerPhone)}" class="w-full bg-slate-900 border border-slate-700 focus:border-amber-400 outline-none rounded-lg px-3 py-2 text-sm" placeholder="07xx xxx xxx" /></label>
     <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Aina ya Bidhaa</span>
       <select id="mk-category" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm">
         ${MARKET_CATEGORIES.map(c=>`<option ${f.category===c?"selected":""}>${c}</option>`).join("")}
       </select></label>
-    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Bidhaa</span>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha ya Mbele (cover)</span>
       <label class="flex items-center justify-center gap-2 border border-dashed border-slate-700 rounded-lg py-4 text-sm text-slate-400 cursor-pointer hover:border-amber-400">
         <span id="mk-image-label">${f.image ? "Picha imewekwa ✔" : "⬆ Bofya ku-upload picha"}</span>
         <input id="mk-image" type="file" accept="image/*" class="hidden" />
       </label></label>
+    <label class="block mb-3"><span class="block text-xs font-semibold text-slate-400 mb-1">Picha za Ziada (mizigo/pembe nyingine — hiari)</span>
+      <label class="flex items-center justify-center gap-2 border border-dashed border-slate-700 rounded-lg py-3 text-xs text-slate-400 cursor-pointer hover:border-amber-400 mb-2">
+        <span>⬆ Ongeza picha nyingine</span>
+        <input id="mk-photo-add" type="file" accept="image/*" class="hidden" />
+      </label>
+      <div class="flex flex-wrap gap-2">
+        ${(f.photos||[]).map((p,i) => `
+          <div class="relative">
+            <img src="${p}" class="w-16 h-16 rounded-lg object-cover border border-slate-700"/>
+            <button type="button" data-action="market-remove-photo" data-index="${i}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center">✕</button>
+          </div>`).join("")}
+      </div></label>
     <p id="mk-error" class="text-rose-400 text-xs mb-2"></p>
     <button data-action="market-submit" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-lg">Tuma kwa Admin</button>
     <p class="text-[11px] text-slate-500 mt-2">Admin atahakiki kabla bidhaa yako haijaonekana hadharani.</p>
@@ -1128,7 +1204,10 @@ function syncMarketFormFromDom(){
   const f = state.marketForm;
   const g = (id) => document.getElementById(id);
   if(g("mk-name")) f.productName = g("mk-name").value;
+  if(g("mk-description")) f.description = g("mk-description").value;
   if(g("mk-price")) f.price = g("mk-price").value;
+  if(g("mk-quantity")) f.quantity = g("mk-quantity").value;
+  if(g("mk-location")) f.location = g("mk-location").value;
   if(g("mk-phone")) f.sellerPhone = g("mk-phone").value;
   if(g("mk-category")) f.category = g("mk-category").value;
 }
@@ -1146,6 +1225,7 @@ function _renderApp(){
   if(state.tab==="home") app.innerHTML = renderHome();
   else if(state.tab==="store") app.innerHTML = renderStore();
   else if(state.tab==="coins") app.innerHTML = renderCoins();
+  else if(state.tab==="game") app.innerHTML = renderGameTab();
   else if(state.tab==="ads") app.innerHTML = renderAds();
   else if(state.tab==="market") app.innerHTML = renderMarket();
   else if(state.tab==="help") app.innerHTML = renderHelp();
@@ -1220,6 +1300,8 @@ function renderModal(){
   if(state.modal.type === "adgate"){ root.innerHTML = adgateModalHtml(state.modal.game, state.modal.kind, state.modal.url, state.modal.label); startAdGateCountdown(); }
   if(state.modal.type === "gamedetail") root.innerHTML = gameDetailModalHtml(state.modal.gameId);
   if(state.modal.type === "gallery") root.innerHTML = galleryModalHtml(state.modal.images, state.modal.index);
+  if(state.modal.type === "marketdetail") root.innerHTML = marketDetailModalHtml(state.modal.listing);
+  if(state.modal.type === "reportseller") root.innerHTML = reportSellerModalHtml(state.modal.listing);
 }
 
 /* ================= Game Details modal ================= */
@@ -1577,6 +1659,15 @@ document.addEventListener("change", (e) => {
     if(!f) return;
     document.getElementById("mk-image-label").textContent = "Inasindika picha...";
     compressImage(f, (d) => { state.marketForm.image = d; const lbl = document.getElementById("mk-image-label"); if(lbl) lbl.textContent = "Picha imewekwa ✔"; });
+  }
+  if(e.target.id === "mk-photo-add"){
+    const f = e.target.files[0];
+    if(!f) return;
+    compressImage(f, (d) => {
+      if(!state.marketForm.photos) state.marketForm.photos = [];
+      state.marketForm.photos.push(d);
+      renderApp();
+    });
   }
 });
 
@@ -1981,19 +2072,56 @@ document.addEventListener("click", async (e) => {
 
   if(action === "market-submit"){
     const errorEl = document.getElementById("mk-error");
+    if(state.user.marketBanned){ errorEl.textContent = "Akaunti yako imezuiwa kuweka bidhaa sokoni kwa sababu ya ripoti za uaminifu. Wasiliana na admin."; return; }
     const f = state.marketForm;
     f.productName = document.getElementById("mk-name").value.trim();
+    f.description = document.getElementById("mk-description").value.trim();
     f.price = document.getElementById("mk-price").value.trim();
+    f.quantity = document.getElementById("mk-quantity").value.trim();
+    f.location = document.getElementById("mk-location").value.trim();
     f.sellerPhone = document.getElementById("mk-phone").value.trim();
     f.category = document.getElementById("mk-category").value;
     if(!f.productName || !f.price || !f.sellerPhone || !f.image){ errorEl.textContent = "Jaza taarifa zote na uweke picha ya bidhaa."; return; }
     const listing = { id: uid(), userPhone: state.user.phone, username: state.user.username,
-      productName: f.productName, price: f.price, sellerPhone: f.sellerPhone, category: f.category,
-      image: f.image, status: "pending", submittedAt: Date.now() };
+      productName: f.productName, description: f.description, price: f.price, quantity: f.quantity,
+      location: f.location, sellerPhone: f.sellerPhone, category: f.category,
+      image: f.image, photos: f.photos||[], status: "pending", submittedAt: Date.now() };
     const ok = await setJSON(K.marketplace, [...state.marketplace, listing]);
     if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
-    state.marketForm = { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"" };
+    state.marketForm = { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"", description:"", location:"", quantity:"", photos:[] };
     await refreshAll(); renderApp();
+    return;
+  }
+  if(action === "market-remove-photo"){
+    const i = Number(act.dataset.index);
+    (state.marketForm.photos||[]).splice(i,1);
+    renderApp();
+    return;
+  }
+  if(action === "open-marketdetail"){
+    const m = state.marketplace.find(x=>x.id===act.dataset.id);
+    if(m) openModal({type:"marketdetail", listing:m});
+    return;
+  }
+  if(action === "open-reportseller"){
+    if(!state.user){ openModal({type:"auth", mode:"login"}); return; }
+    const m = state.marketplace.find(x=>x.id===act.dataset.id);
+    if(m) openModal({type:"reportseller", listing:m});
+    return;
+  }
+  if(action === "report-seller-submit"){
+    const errorEl = document.getElementById("report-error");
+    const reason = document.getElementById("report-reason").value.trim();
+    if(!reason){ errorEl.textContent = "Eleza tatizo kabla ya kutuma."; return; }
+    const m = state.marketplace.find(x=>x.id===act.dataset.id);
+    if(!m) return;
+    const report = { id: uid(), listingId: m.id, productName: m.productName, sellerUsername: m.username,
+      sellerPhone: m.userPhone, reporterUsername: state.user.username, reporterPhone: state.user.phone,
+      reason, status:"pending", submittedAt: Date.now() };
+    const ok = await setJSON(K.marketReports, [...state.marketReports, report]);
+    if(!ok){ errorEl.textContent = "Imeshindwa kutuma — angalia mtandao wako kisha jaribu tena."; return; }
+    closeModal(); await refreshAll(); renderApp();
+    alert("Ripoti yako imetumwa kwa admin. Asante!");
     return;
   }
 

@@ -37,7 +37,8 @@ const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/p
   tournaments:"mgs/tournaments", settings:"mgs/settings", stats:"mgs/stats", claims:"mgs/coinclaims",
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
   marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
-  notifications:"mgs/notifications", gameRequests:"mgs/gameRequests", dailyRewards:"mgs/dailyRewards" };
+  notifications:"mgs/notifications", gameRequests:"mgs/gameRequests", dailyRewards:"mgs/dailyRewards",
+  marketReports:"mgs/marketReports" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -164,6 +165,7 @@ let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settin
   gameRequests: [],
   dailyRewards: [10,15,20,25,30,40,60],
   rewardsLoaded: false,
+  marketReports: [],
 };
 
 /* ================= focus-preserving render wrapper ================= */
@@ -281,12 +283,13 @@ let spinConfigLoaded = false; // spinConfig is only pulled from Firebase ONCE �
 // the on-screen form (like gameForm/adForm), so periodic refreshes never wipe an image you just
 // uploaded before you hit "Hifadhi Spin". This was the cause of uploaded pictures "disappearing".
 async function refresh(){
-  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv,nt,gr,dr] = await Promise.all([
+  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv,nt,gr,dr,mr] = await Promise.all([
     getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
     getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
+    getJSON(K.marketReports, []),
   ]);
   state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
   if(!spinConfigLoaded){
@@ -303,6 +306,7 @@ async function refresh(){
   state.notifications = nt || [];
   state.gameRequests = gr || [];
   if(!state.rewardsLoaded){ state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60]; state.rewardsLoaded = true; }
+  state.marketReports = mr || [];
 }
 let videoAdLoaded = false; // same reasoning as spinConfigLoaded — protects the settings form from being wiped mid-edit
 
@@ -316,7 +320,7 @@ function badge(text, tone){
 function renderNav(){
   const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["engage","🔔 Engage"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
   const pendingCount = state.payments.filter(p=>p.status==="pending" && p.type!=="coin").length + state.payments.filter(p=>p.type==="coin" && p.status==="pending").length;
-  const marketPending = state.marketplace.filter(m=>m.status==="pending").length;
+  const marketPending = state.marketplace.filter(m=>m.status==="pending").length + state.marketReports.filter(r=>r.status==="pending").length;
   const requestsPending = state.gameRequests.filter(r=>r.status==="pending").length;
   document.getElementById("nav").innerHTML = items.map(([key,label]) => `
     <button data-tab="${key}" class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition ${state.tab===key ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:bg-slate-900"}">
@@ -570,7 +574,31 @@ function renderMarketPanel(){
       <span>${esc(m.productName)} — ${esc(m.username)}</span>
       <button data-action="remove-market" data-id="${m.id}" class="text-rose-400">Futa</button>
     </div>`).join("")}
-  </div>` : ""}`;
+  </div>` : ""}
+
+  <h3 class="font-bold mb-3 mt-6">🚩 Ripoti za Wateja kuhusu Wauzaji (${state.marketReports.filter(r=>r.status!=="dismissed").length})</h3>
+  <p class="text-[11px] text-slate-500 mb-3">Mteja akimripoti muuzaji (kwa uaminifu au tatizo lingine), utamuona hapa. Unaweza kumzuia (Ban) asiweze kuweka bidhaa tena, au kupuuza ripoti.</p>
+  <div class="space-y-2">
+    ${state.marketReports.slice().reverse().map(r => {
+      const seller = state.users.find(u=>u.phone===r.sellerPhone);
+      const banned = seller && seller.marketBanned;
+      return `
+      <div class="bg-slate-900/70 border ${r.status==="pending" ? "border-rose-500/40" : "border-slate-800"} rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1">
+          <p class="text-xs font-bold">${esc(r.productName)}</p>
+          <span class="text-[10px] text-slate-500">${new Date(r.submittedAt).toLocaleString()}</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Muuzaji: <span class="text-slate-200">${esc(r.sellerUsername)}</span> (${esc(r.sellerPhone)}) ${banned ? `<span class="text-rose-400 font-bold">· AMEZUIWA</span>` : ""}</p>
+        <p class="text-[11px] text-slate-400">Aliyeripoti: ${esc(r.reporterUsername)} (${esc(r.reporterPhone)})</p>
+        <p class="text-xs text-slate-200 bg-slate-950/60 rounded-lg p-2 mt-2">${esc(r.reason)}</p>
+        <div class="flex gap-2 mt-2">
+          ${!banned ? `<button data-action="ban-seller" data-phone="${esc(r.sellerPhone)}" data-report-id="${r.id}" class="flex-1 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold text-xs py-2 rounded-lg">🚫 Zuia Muuzaji (Ban)</button>`
+            : `<button data-action="unban-seller" data-phone="${esc(r.sellerPhone)}" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs py-2 rounded-lg">✅ Ondoa Ban</button>`}
+          <button data-action="dismiss-report" data-id="${r.id}" class="flex-1 bg-slate-800 text-slate-300 font-bold text-xs py-2 rounded-lg">Puuza Ripoti</button>
+        </div>
+      </div>`;
+    }).join("") || `<p class="text-slate-600 text-xs">Bado hakuna ripoti kutoka kwa wateja.</p>`}
+  </div>`;
 }
 
 /* ================= coins panel: spin config + coin packages ================= */
@@ -1079,6 +1107,39 @@ document.addEventListener("click", async (e) => {
   }
   if(action === "remove-market"){
     await setJSON(K.marketplace, state.marketplace.filter(m=>m.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+  if(action === "ban-seller"){
+    const phone = act.dataset.phone;
+    const ok1 = confirm(`Una uhakika unataka kumzuia (Ban) muuzaji mwenye namba ${phone}? Hataweza kuweka bidhaa tena sokoni.`);
+    if(!ok1) return;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===phone);
+    if(uIdx>=0){
+      users[uIdx].marketBanned = true;
+      const ok = await setJSON(K.users, users);
+      if(!ok){ alert("Imeshindwa kuhifadhi — angalia mtandao wako kisha jaribu tena."); return; }
+    } else {
+      alert("Mtumiaji huyu hakupatikana kwenye akaunti — huenda ameshafuta akaunti yake.");
+    }
+    if(act.dataset.reportId){
+      const nextReports = state.marketReports.map(r => r.id===act.dataset.reportId ? {...r, status:"actioned"} : r);
+      await setJSON(K.marketReports, nextReports);
+    }
+    await refresh(); render();
+    return;
+  }
+  if(action === "unban-seller"){
+    const phone = act.dataset.phone;
+    const users = await getJSON(K.users, []);
+    const uIdx = users.findIndex(u=>u.phone===phone);
+    if(uIdx>=0){ users[uIdx].marketBanned = false; await setJSON(K.users, users); }
+    await refresh(); render();
+    return;
+  }
+  if(action === "dismiss-report"){
+    const next = state.marketReports.map(r => r.id===act.dataset.id ? {...r, status:"dismissed"} : r);
+    await setJSON(K.marketReports, next); await refresh(); render();
     return;
   }
   if(action === "add-vip-plan"){
