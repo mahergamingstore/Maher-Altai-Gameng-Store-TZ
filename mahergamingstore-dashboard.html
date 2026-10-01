@@ -38,7 +38,7 @@ const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/p
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
   marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
   notifications:"mgs/notifications", gameRequests:"mgs/gameRequests", dailyRewards:"mgs/dailyRewards",
-  marketReports:"mgs/marketReports" };
+  marketReports:"mgs/marketReports", onlineChats:"mgs/onlineChats" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -165,7 +165,7 @@ let state = { tab:"overview", users:[], games:[], ads:[], tournaments:[], settin
   gameRequests: [],
   dailyRewards: [10,15,20,25,30,40,60],
   rewardsLoaded: false,
-  marketReports: [],
+  marketReports: [], onlineChats: [],
 };
 
 /* ================= focus-preserving render wrapper ================= */
@@ -283,13 +283,13 @@ let spinConfigLoaded = false; // spinConfig is only pulled from Firebase ONCE �
 // the on-screen form (like gameForm/adForm), so periodic refreshes never wipe an image you just
 // uploaded before you hit "Hifadhi Spin". This was the cause of uploaded pictures "disappearing".
 async function refresh(){
-  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv,nt,gr,dr,mr] = await Promise.all([
+  const [u,g,a,t,s,p,st,sp,cp,mk,vp,va,adv,nt,gr,dr,mr,ch] = await Promise.all([
     getJSON(K.users, []), getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
     getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
-    getJSON(K.marketReports, []),
+    getJSON(K.marketReports, []), getJSON(K.onlineChats, []),
   ]);
   state.users=u; state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.stats=st;
   if(!spinConfigLoaded){
@@ -306,7 +306,7 @@ async function refresh(){
   state.notifications = nt || [];
   state.gameRequests = gr || [];
   if(!state.rewardsLoaded){ state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60]; state.rewardsLoaded = true; }
-  state.marketReports = mr || [];
+  state.marketReports = mr || []; state.onlineChats = ch || [];
 }
 let videoAdLoaded = false; // same reasoning as spinConfigLoaded — protects the settings form from being wiped mid-edit
 
@@ -318,7 +318,7 @@ function badge(text, tone){
 
 /* ================= nav ================= */
 function renderNav(){
-  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["engage","🔔 Engage"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
+  const items = [["overview","📊 Muhtasari"],["games","🎮 Game"],["ads","📣 Matangazo"],["market","🛍️ Soko"],["coins","🪙 Coins"],["engage","🔔 Engage"],["chat","💬 Chat"],["payments","💳 Malipo"],["users","👥 Watumiaji"]];
   const pendingCount = state.payments.filter(p=>p.status==="pending" && p.type!=="coin").length + state.payments.filter(p=>p.type==="coin" && p.status==="pending").length;
   const marketPending = state.marketplace.filter(m=>m.status==="pending").length + state.marketReports.filter(r=>r.status==="pending").length;
   const requestsPending = state.gameRequests.filter(r=>r.status==="pending").length;
@@ -505,7 +505,13 @@ function renderGames(){
 /* ================= ads panel ================= */
 function renderAds(){
   const f = state.adForm;
-  return `
+  return `<div class="bg-slate-900/70 border border-violet-500/20 rounded-xl p-4 mb-5">
+      <div class="flex items-center justify-between gap-3 mb-3"><div><h3 class="font-bold">🎬 Intro Video ya Website</h3><p class="text-[11px] text-slate-500">Video hii itaonekana kwenye page ya 🎬 Intro ya website, kama Trend page.</p></div><span class="text-[10px] text-emerald-400">● Live</span></div>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Video URL (YouTube au direct MP4)</span><input id="intro-video-url" value="${esc((state.videoAd&&state.videoAd.introVideoUrl)||"")}" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="https://youtube.com/watch?v=... au https://.../video.mp4"/></label>
+      <label class="block mb-3"><span class="block text-[11px] text-slate-500 mb-1">Au chagua video ndogo kutoka kwenye simu/PC (max 6MB)</span><input id="intro-video-file" type="file" accept="video/*" class="w-full text-xs text-slate-400"/></label>
+      <div id="intro-video-preview" class="mb-3"></div>
+      <button data-action="save-intro-video" class="bg-violet-500 hover:bg-violet-400 text-white font-bold px-4 py-2 rounded-lg text-sm">💾 Hifadhi Intro Video</button>
+    </div>` + `
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
     <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-4">
       <h3 class="font-bold mb-3">➕ Ongeza Tangazo (Screen ${state.ads.length+1})</h3>
@@ -935,6 +941,15 @@ function renderUsers(){
   </div>`;
 }
 
+function renderChatPanel(){
+  const threads=state.onlineChats||[];
+  const active=state.activeChatUser|| (threads[0]&&threads[0].userPhone) || "";
+  const thread=threads.find(t=>t.userPhone===active);
+  return `<div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
+    <div class="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden"><div class="p-4 border-b border-slate-800"><h2 class="font-bold">💬 Online Chat</h2><p class="text-[11px] text-slate-500">Mazungumzo ya wateja na admin.</p></div><div class="max-h-[600px] overflow-y-auto">${threads.slice().sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0)).map(t=>`<button data-action="select-chat" data-phone="${esc(t.userPhone)}" class="w-full text-left p-3 border-b border-slate-800 hover:bg-slate-800/60 ${t.userPhone===active?'bg-slate-800':''}"><p class="font-bold text-sm">${esc(t.userName||t.userPhone)}</p><p class="text-[10px] text-slate-500 truncate">${esc((t.messages||[]).slice(-1)[0]?.text||'Hakuna ujumbe')}</p></button>`).join('')||`<p class="p-6 text-xs text-slate-600 text-center">Bado hakuna online chat.</p>`}</div></div>
+    <div class="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden min-h-[600px] flex flex-col">${thread?`<div class="p-4 border-b border-slate-800"><p class="font-bold">${esc(thread.userName||thread.userPhone)}</p><p class="text-[10px] text-emerald-400">● Online Chat</p></div><div class="flex-1 p-4 space-y-3 overflow-y-auto max-h-[500px]">${(thread.messages||[]).map(m=>`<div class="flex ${m.from==='admin'?'justify-end':'justify-start'}"><div class="max-w-[75%] px-3 py-2 rounded-2xl text-xs ${m.from==='admin'?'bg-emerald-500 text-slate-950 rounded-br-sm':'bg-slate-800 text-slate-200 rounded-bl-sm'}"><p>${esc(m.text)}</p><p class="text-[9px] opacity-50 mt-1">${m.at?new Date(m.at).toLocaleString():''}</p></div></div>`).join('')}</div><div class="p-3 border-t border-slate-800 flex gap-2"><input id="admin-chat-input" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-xs" placeholder="Jibu mteja..."/><button data-action="reply-chat" data-phone="${esc(thread.userPhone)}" class="bg-emerald-500 text-slate-950 font-bold px-5 rounded-xl">Tuma</button></div>`:`<div class="m-auto text-center text-slate-600"><div class="text-5xl mb-3">💬</div><p class="text-sm">Chagua mteja upande wa kushoto.</p></div>`}</div></div>`;
+}
+
 /* ================= render root ================= */
 function _render(){
   if(skipFormSync){ skipFormSync = false; } else { syncAllForms(); }
@@ -946,6 +961,7 @@ function _render(){
   else if(state.tab==="market") main.innerHTML = renderMarketPanel();
   else if(state.tab==="coins") main.innerHTML = renderCoinsPanel();
   else if(state.tab==="engage") main.innerHTML = renderEngagePanel();
+  else if(state.tab==="chat") main.innerHTML = renderChatPanel();
   else if(state.tab==="payments") main.innerHTML = renderPayments();
   else if(state.tab==="users") main.innerHTML = renderUsers();
 }
@@ -995,13 +1011,20 @@ document.addEventListener("click", async (e) => {
   if(!act) return;
   const action = act.dataset.action;
 
+  if(action === "select-chat"){ state.activeChatUser=act.dataset.phone; render(); return; }
+  if(action === "reply-chat"){
+    const input=document.getElementById("admin-chat-input"); const text=(input&&input.value||"").trim(); if(!text) return;
+    const phone=act.dataset.phone; const thread=state.onlineChats.find(t=>t.userPhone===phone); if(!thread) return;
+    const next=state.onlineChats.map(t=>t.userPhone===phone?{...t,messages:[...(t.messages||[]),{id:uid(),from:"admin",text,at:Date.now()}],updatedAt:Date.now()}:t);
+    const ok=await setJSON(K.onlineChats,next); if(!ok){alert("Imeshindwa kutuma jibu.");return;} state.onlineChats=next; render(); return;
+  }
   if(action === "save-game"){
     const f = state.gameForm;
     f.title = document.getElementById("g-title").value.trim();
     f.category = document.getElementById("g-category").value;
     f.genre = document.getElementById("g-genre").value;
     f.coinCost = document.getElementById("g-coincost").value.trim();
-    f.whatsappPin = document.getElementById("g-whatsapp-pin").value.trim();
+    f.whatsappPin = document.getElementById("g-whatsapp-pin").value.trim().toUpperCase();
     f.price = document.getElementById("g-price").value.trim();
     f.linkApk = normalizeUrl(document.getElementById("g-link-apk").value.trim());
     f.linkObb = normalizeUrl(document.getElementById("g-link-obb").value.trim());
@@ -1025,7 +1048,8 @@ document.addEventListener("click", async (e) => {
     f.trailerUrl = normalizeUrl(document.getElementById("g-trailer").value.trim());
     f.adminRating = document.getElementById("g-admin-rating").value.trim();
     f.setupVideoUrl = normalizeUrl(document.getElementById("g-setup-video").value.trim());
-    if(!f.title || !f.linkApk){ alert("Weka jina la game na link ya APK ya game."); return; }
+    const hasAnyGameLink = !!(f.linkApk || f.linkObb || f.linkData);
+    if(!f.title || !hasAnyGameLink){ alert("Weka jina la game na angalau link moja ya download (APK, OBB au Data)."); return; }
     let nextGames;
     if(state.editingGameId){
       nextGames = state.games.map(g => g.id===state.editingGameId ? { ...g, ...f, id: state.editingGameId, updatedAt: Date.now() } : g);
@@ -1155,6 +1179,14 @@ document.addEventListener("click", async (e) => {
   }
   if(action === "remove-vip-plan"){
     await setJSON(K.vipPlans, state.vipPlans.filter(v=>v.id!==act.dataset.id)); await refresh(); render();
+    return;
+  }
+  if(action === "save-intro-video"){
+    const url=(document.getElementById("intro-video-url")?.value||"").trim();
+    const file=document.getElementById("intro-video-file")?.files?.[0];
+    const save=(finalUrl)=>{ const va={...(state.videoAd||{}),introVideoUrl:finalUrl}; setJSON(K.videoAd,va).then(ok=>{if(!ok){alert("Imeshindwa kuhifadhi intro video.");return;} state.videoAd=va; render(); alert("Intro video imehifadhiwa!");}); };
+    if(file){ if(file.size>6*1024*1024){alert("Video ya upload iwe 6MB au chini. Kwa video kubwa tumia Video URL/MP4 link.");return;} const rd=new FileReader(); rd.onload=()=>save(rd.result); rd.readAsDataURL(file); }
+    else if(url) save(url); else {alert("Weka Video URL au chagua video file.");}
     return;
   }
   if(action === "save-videoad"){

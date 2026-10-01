@@ -32,11 +32,61 @@
   @keyframes spinWheelSpin{from{transform:rotate(0deg);}to{transform:rotate(1080deg);}}
   /* Fruit Catcher mini-game */
   #fruit-field{position:relative;width:100%;height:420px;overflow:hidden;border-radius:16px;background:linear-gradient(180deg,#0b1120,#05070b);touch-action:none;}
-  .fruit-item{position:absolute;font-size:32px;line-height:1;user-select:none;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));}
+  .fruit-item{position:absolute;font-size:32px;line-height:1;user-select:none;pointer-events:none;will-change:transform;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));}
   #fruit-basket{position:absolute;bottom:6px;width:76px;height:44px;margin-left:-38px;font-size:40px;display:flex;align-items:center;justify-content:center;user-select:none;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));}
+  /* First-screen promotional video intro */
+  #intro-screen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;background:
+    radial-gradient(circle at 50% 15%,rgba(168,85,247,.20),transparent 42%),
+    linear-gradient(135deg,#03040a 0%,#08050f 52%,#03040a 100%);transition:opacity .45s ease,visibility .45s ease;}
+  #intro-screen.intro-hidden{opacity:0;visibility:hidden;pointer-events:none;}
+  .intro-shell{width:min(1100px,100%);height:min(760px,calc(100vh - 28px));position:relative;overflow:hidden;border:1px solid rgba(251,191,36,.28);border-radius:28px;background:rgba(3,7,18,.88);box-shadow:0 30px 100px rgba(0,0,0,.65),0 0 70px rgba(168,85,247,.12);}
+  .intro-video-wrap{position:absolute;inset:0;background:#020617;display:flex;align-items:center;justify-content:center;}
+  #intro-video{width:100%;height:100%;object-fit:cover;background:#020617;}
+  #intro-youtube{width:100%;height:100%;border:0;background:#020617;}
+  .intro-video-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(2,6,23,.18) 0%,rgba(2,6,23,.04) 38%,rgba(2,6,23,.90) 100%);pointer-events:none;}
+  .intro-content{position:absolute;inset:auto 0 0;padding:clamp(22px,5vw,58px);z-index:2;}
+  .intro-kicker{letter-spacing:.24em;text-transform:uppercase;color:#fbbf24;font-size:12px;font-weight:800;}
+  .intro-title{font-family:'Orbitron',sans-serif;font-size:clamp(28px,6vw,62px);line-height:1.02;font-weight:800;text-shadow:0 8px 35px rgba(0,0,0,.8);}
+  .intro-subtitle{max-width:650px;color:#dbeafe;font-size:clamp(14px,2vw,19px);margin-top:12px;}
+  .intro-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px;}
+  .intro-btn{border:1px solid rgba(251,191,36,.55);border-radius:999px;padding:12px 20px;font-weight:800;cursor:pointer;transition:.2s;backdrop-filter:blur(8px);}
+  .intro-btn-primary{background:linear-gradient(90deg,#f59e0b,#a855f7);color:white;box-shadow:0 8px 30px rgba(168,85,247,.25);}
+  .intro-btn-secondary{background:rgba(15,23,42,.70);color:#f8fafc;border-color:rgba(255,255,255,.18);}
+  .intro-btn:hover{transform:translateY(-2px);}
+  .intro-top-brand{position:absolute;top:20px;left:24px;z-index:3;font-family:'Orbitron',sans-serif;font-weight:800;font-size:clamp(14px,2vw,20px);text-shadow:0 3px 20px #000;}
+  .intro-skip{position:absolute;top:18px;right:18px;z-index:4;border:1px solid rgba(255,255,255,.2);background:rgba(2,6,23,.62);color:#fff;border-radius:999px;padding:8px 13px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(8px);}
+  .intro-empty{padding:28px;text-align:center;color:#cbd5e1;max-width:520px;}
+  .intro-empty .icon{font-size:58px;margin-bottom:12px;}
+  @media(max-width:640px){.intro-shell{height:calc(100vh - 20px);border-radius:20px}.intro-content{padding:22px}.intro-subtitle{font-size:14px}.intro-actions{margin-top:16px}.intro-btn{width:100%;text-align:center}.intro-top-brand{left:18px;top:16px}.intro-skip{top:12px;right:12px;}}
 </style>
 </head>
 <body class="min-h-screen">
+
+<!-- Promotional video screen shown before the main website -->
+<div id="intro-screen" aria-label="MaherGamingStore promotional video">
+  <div class="intro-shell">
+    <div class="intro-video-wrap">
+      <video id="intro-video" playsinline muted loop preload="metadata"></video><iframe id="intro-youtube" class="hidden" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+      <div id="intro-empty" class="intro-empty hidden">
+        <div class="icon">🎬</div>
+        <div class="text-xl font-bold text-white">Video ya utangulizi haijawekwa bado</div>
+        <div class="text-sm mt-2">Admin akiweka <b>Intro Video</b> kwenye Dashboard, itaonekana hapa moja kwa moja.</div>
+      </div>
+      <div class="intro-video-shade"></div>
+    </div>
+    <div class="intro-top-brand">MAHER<span class="text-purple-400">GAMING</span>STORE</div>
+    <button class="intro-skip" data-intro-action="skip">Ruka ›</button>
+    <div class="intro-content">
+      <div id="intro-kicker" class="intro-kicker"></div>
+      <div id="intro-title" class="intro-title mt-2"></div>
+      <div id="intro-subtitle" class="intro-subtitle"></div>
+      <div class="intro-actions">
+        <button id="intro-continue" class="intro-btn intro-btn-primary" data-intro-action="continue"></button>
+        <button id="intro-mute" class="intro-btn intro-btn-secondary" data-intro-action="mute"></button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="ps-bg" id="ps-bg"></div>
 
@@ -47,6 +97,7 @@
       <span class="brandfont text-lg font-extrabold tracking-wide">Maher<span class="text-amber-400">Gaming</span>Store</span>
     </div>
     <div id="header-auth" class="flex items-center gap-3"></div>
+    <div class="flex items-center gap-1 ml-2">🌐<select id="language-select" class="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[11px]" onchange="setLanguage(this.value)"><option value="sw">SW</option><option value="en">EN</option></select></div>
   </div>
   <nav class="max-w-6xl mx-auto px-4 flex gap-1 pb-2 overflow-x-auto no-scrollbar text-xs font-semibold" id="nav-tabs"></nav>
   <div id="notif-panel-host"></div>
@@ -61,7 +112,6 @@
 <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 z-30 bg-[#0B1018]/95 backdrop-blur border-t border-slate-800 flex items-stretch"></nav>
 
 <!-- chat widget -->
-<button id="chat-toggle" class="fixed bottom-5 right-5 z-[90] w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-violet-500 shadow-lg shadow-amber-500/30 flex items-center justify-center text-slate-950 text-xl">💬</button>
 <div id="chat-box" class="hidden fixed bottom-24 right-5 z-[90] w-80 max-w-[90vw] h-[420px] bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
   <div class="bg-gradient-to-r from-amber-500/20 to-violet-500/20 px-4 py-3 border-b border-slate-800 flex items-center gap-2">
     <div class="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-violet-500 flex items-center justify-center font-bold text-slate-950 text-xs">AI</div>
@@ -88,7 +138,7 @@ const K = { users:"mgs/users", games:"mgs/games", ads:"mgs/ads", payments:"mgs/p
   spinConfig:"mgs/spinConfig", coinPackages:"mgs/coinPackages",
   marketplace:"mgs/marketplace", vipPlans:"mgs/vipPlans", videoAd:"mgs/videoAd", adminAdvice:"mgs/adminAdvice",
   reviews:"mgs/reviews", notifications:"mgs/notifications", gameRequests:"mgs/gameRequests",
-  dailyRewards:"mgs/dailyRewards", marketReports:"mgs/marketReports" };
+  dailyRewards:"mgs/dailyRewards", marketReports:"mgs/marketReports", onlineChats:"mgs/onlineChats" };
 
 function withTimeout(promise, ms){
   return new Promise((resolve) => {
@@ -126,13 +176,28 @@ const EMULATOR_ICON = { "PSP":"🎮","WinLator":"🍷","Wii":"🎱","GameCube":"
 const MARKET_CATEGORIES = ["Device","Console","PS (PlayStation)","Gaming Setup","Laptop","Simu (Phone)","Vifaa (Accessories)","Monitor","Keyboard & Mouse","Headset","Nyingine"];
 const MARKET_ICON = { "Device":"📟","Console":"🎮","PS (PlayStation)":"🕹️","Gaming Setup":"🖥️","Laptop":"💻","Simu (Phone)":"📱","Vifaa (Accessories)":"🔌","Monitor":"🖥️","Keyboard & Mouse":"⌨️","Headset":"🎧","Nyingine":"📦" };
 
+/* ================= bilingual language system ================= */
+const LANG_KEY = "mgs_lang";
+let currentLang = (()=>{ try{return localStorage.getItem(LANG_KEY)||"sw";}catch(e){return "sw";} })();
+function t(sw,en){ return currentLang === "en" ? en : sw; }
+function updateIntroLanguage(){
+  const set=(id,sw,en)=>{const el=document.getElementById(id); if(el) el.textContent=t(sw,en);};
+  set("intro-kicker","Karibu kwenye dunia ya gaming","Welcome to the gaming world");
+  set("intro-title","CHEZA. PAKUA. FURAHIA.","PLAY. DOWNLOAD. ENJOY.");
+  set("intro-subtitle","Gundua games, offers, coins, marketplace na huduma nyingine za MaherGamingStore.","Discover games, offers, coins, marketplace and more from MaherGamingStore.");
+  set("intro-continue","🚀 Endelea kwenye Website","🚀 Continue to Website");
+  const mute=document.getElementById("intro-mute"); if(mute) mute.textContent=mute.dataset.soundState==="on" ? t("🔊 Sauti imewashwa","🔊 Sound on") : t("🔇 Sauti imezimwa","🔇 Sound off");
+  const skip=document.querySelector('[data-intro-action="skip"]'); if(skip) skip.textContent=t("Ruka ›","Skip ›");
+}
+function setLanguage(lang){ currentLang = lang === "en" ? "en" : "sw"; try{localStorage.setItem(LANG_KEY,currentLang);}catch(e){} renderApp(); setupIntroVideo(); updateIntroLanguage(); }
+
 /* ================= state ================= */
 let state = {
   user: null, tab: "home", storeFilter: "Zote", genreFilter: "Zote", emulatorFilter: "Zote", searchQuery: "", viewMode: "vertical",
   games: [], ads: [], tournaments: [], settings: {}, payments: [], claims: [],
   spinConfig: { symbols: [], costCoins: 0 }, coinPackages: [], lastSpin: null, spinning: false,
   marketplace: [], vipPlans: [], videoAd: { videoUrl:"", watchSeconds:10, blockAdsCost:0 }, adminAdvice: [],
-  marketReports: [],
+  marketReports: [], onlineChats: [], marketView: "products",
   marketForm: { productName:"", price:"", sellerPhone:"", category: MARKET_CATEGORIES[0], image:"", description:"", location:"", quantity:"", photos:[] },
   reviews: [], stats: { visits:0, dailyDownloads:{}, downloadsLog:[] },
   reviewForm: { rating: 5, text: "" },
@@ -147,7 +212,7 @@ const FRUIT_COIN_PER_CATCH = 5;
 const FRUIT_REPLAY_COST = 20;
 const FRUIT_GAME_SECONDS = 30;
 let fruitGame = { status:"idle", score:0, timeLeft:FRUIT_GAME_SECONDS, running:false };
-let fruitLoopHandle = null, fruitSpawnHandle = null, fruitTimerHandle = null;
+let fruitLoopHandle = null, fruitSpawnHandle = null, fruitTimerHandle = null, fruitCountdownHandle = null;
 const FRUIT_EMOJIS = ["🍎","🍌","🍇","🍉","🍓","🍊","🍍","🥝"];
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
@@ -165,7 +230,7 @@ function renderGameTab(){
       <p class="font-bold text-sm">🍎 Kamata Matunda</p>
       <div class="flex items-center gap-3 text-sm font-bold">
         <span class="text-amber-300">🪙 ${fruitGame.score}</span>
-        <span class="text-rose-300">⏱ ${fruitGame.timeLeft}s</span>
+        <span id="fruit-time" class="text-rose-300 tabular-nums">⏱ ${fruitGame.timeLeft}s</span>
       </div>
     </div>
     <div id="fruit-field">
@@ -218,6 +283,7 @@ async function fruitStart(){
     const uIdx = users.findIndex(u=>u.phone===state.user.phone);
     if(uIdx>=0){ users[uIdx].coins = Math.max(0,(users[uIdx].coins||0)-FRUIT_REPLAY_COST); await setJSON(K.users, users); state.user = users[uIdx]; }
   }
+  clearInterval(fruitSpawnHandle); clearTimeout(fruitCountdownHandle); cancelAnimationFrame(fruitLoopHandle);
   fruitGame = { status:"playing", score:0, timeLeft:FRUIT_GAME_SECONDS, running:true, lost:false };
   renderApp();
   setTimeout(fruitEngineInit, 30); // let the DOM (#fruit-field) exist first
@@ -249,7 +315,8 @@ function fruitEngineInit(){
     el.textContent = isBomb ? "💣" : FRUIT_EMOJIS[Math.floor(Math.random()*FRUIT_EMOJIS.length)];
     const x = 6 + Math.random()*88;
     el.style.left = x + "%";
-    el.style.top = "-32px";
+    el.style.top = "0";
+    el.style.transform = "translate3d(0, -32px, 0)";
     field.appendChild(el);
     items.push({ el, x, y:-32, speed: 90 + Math.random()*70, type: isBomb ? "bomb" : "fruit" });
   }
@@ -263,7 +330,7 @@ function fruitEngineInit(){
     for(let i=items.length-1; i>=0; i--){
       const it = items[i];
       it.y += it.speed*dt;
-      it.el.style.top = it.y + "px";
+      it.el.style.transform = `translate3d(0, ${it.y}px, 0)`;
       const caughtZoneTop = fieldH - 70, caughtZoneBottom = fieldH - 10;
       const withinBasketX = Math.abs(it.x - basketPct) < 9;
       if(it.y >= caughtZoneTop && it.y <= caughtZoneBottom && withinBasketX){
@@ -280,12 +347,22 @@ function fruitEngineInit(){
   }
   fruitLoopHandle = requestAnimationFrame(loop);
 
-  fruitTimerHandle = setInterval(() => {
-    fruitGame.timeLeft--;
-    const timeEl = document.querySelector("#app .text-rose-300");
-    if(timeEl) timeEl.textContent = `⏱ ${fruitGame.timeLeft}s`;
-    if(fruitGame.timeLeft <= 0) fruitEnd(false);
-  }, 1000);
+  // Countdown is anchored to real elapsed time so it always shows 30, 29, 28 ... 0
+  // without skipping numbers because of small timer delays.
+  const countdownStart = performance.now();
+  function countdownTick(now){
+    if(!fruitGame.running) return;
+    const elapsed = Math.floor((now - countdownStart) / 1000);
+    const nextLeft = Math.max(0, FRUIT_GAME_SECONDS - elapsed);
+    if(nextLeft !== fruitGame.timeLeft){
+      fruitGame.timeLeft = nextLeft;
+      const timeEl = document.getElementById("fruit-time");
+      if(timeEl) timeEl.textContent = `⏱ ${nextLeft}s`;
+    }
+    if(nextLeft <= 0){ fruitEnd(false); return; }
+    fruitCountdownHandle = setTimeout(() => countdownTick(performance.now()), 1000 - ((now - countdownStart) % 1000));
+  }
+  fruitCountdownHandle = setTimeout(() => countdownTick(performance.now()), 1000);
 
   field._fruitCleanup = () => {
     field.removeEventListener("mousemove", onMouseMove);
@@ -298,7 +375,8 @@ function fruitEngineInit(){
 async function fruitEnd(lost){
   if(!fruitGame.running) return;
   fruitGame.running = false; fruitGame.lost = lost;
-  clearInterval(fruitSpawnHandle); clearInterval(fruitTimerHandle); cancelAnimationFrame(fruitLoopHandle);
+  clearInterval(fruitSpawnHandle); clearInterval(fruitTimerHandle); clearTimeout(fruitCountdownHandle); cancelAnimationFrame(fruitLoopHandle);
+  fruitSpawnHandle = null; fruitTimerHandle = null; fruitCountdownHandle = null; fruitLoopHandle = null;
   const field = document.getElementById("fruit-field");
   if(field && field._fruitCleanup) field._fruitCleanup();
   if(fruitGame.score > 0 && state.user){
@@ -332,21 +410,21 @@ document.getElementById("year").textContent = new Date().getFullYear();
 })();
 
 async function refreshAll(){
-  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st,nt,gr,dr,mr] = await Promise.all([
+  const [g,a,t,s,p,c,sp,cp,mk,vp,va,adv,rv,st,nt,gr,dr,mr,ch] = await Promise.all([
     getJSON(K.games, []), getJSON(K.ads, []), getJSON(K.tournaments, []),
     getJSON(K.settings, {}), getJSON(K.payments, []), getJSON(K.claims, []),
     getJSON(K.spinConfig, { symbols: [], costCoins: 0 }), getJSON(K.coinPackages, []),
     getJSON(K.marketplace, []), getJSON(K.vipPlans, []), getJSON(K.videoAd, { videoUrl:"", watchSeconds:10, blockAdsCost:0 }), getJSON(K.adminAdvice, []),
     getJSON(K.reviews, []), getJSON(K.stats, { visits:0, dailyDownloads:{}, downloadsLog:[] }),
     getJSON(K.notifications, []), getJSON(K.gameRequests, []), getJSON(K.dailyRewards, [10,15,20,25,30,40,60]),
-    getJSON(K.marketReports, []),
+    getJSON(K.marketReports, []), getJSON(K.onlineChats, []),
   ]);
   state.games=g; state.ads=a; state.tournaments=t; state.settings=s; state.payments=p; state.claims=c;
   state.spinConfig=sp; state.coinPackages=cp;
   state.marketplace=mk; state.vipPlans=vp; state.videoAd=va; state.adminAdvice=adv;
   state.reviews=rv; state.stats=st; state.loaded = true;
   state.notifications=nt; state.gameRequests=gr; state.dailyRewards = (dr && dr.length) ? dr : [10,15,20,25,30,40,60];
-  state.marketReports=mr;
+  state.marketReports=mr; state.onlineChats=ch || [];
   if(state.user){
     const users = await getJSON(K.users, []);
     const fresh = users.find(u=>u.phone===state.user.phone);
@@ -413,6 +491,8 @@ function renderHeader(){
     el.innerHTML = `<button data-action="open-auth" class="flex items-center gap-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold px-3 py-2 rounded-lg">Ingia / Jisajili</button>`;
   }
   renderNotifPanel();
+  const langSel = document.getElementById("language-select");
+  if(langSel) langSel.value = currentLang;
 }
 
 function renderNotifPanel(){
@@ -439,7 +519,7 @@ function renderNotifPanel(){
 const NOTIF_ICON = { game:"🎮", featured:"🌟", reward:"🎁", vip:"👑", tournament:"🏆", update:"🛠️", announcement:"📢" };
 
 function renderNav(){
-  const tabs = [["home","🏠 Home"],["store","🛒 Duka"],["coins","🪙 Coins"],["game","🍎 Mchezo"],["market","🛍️ Masoko"],["ads","📣 Matangazo"],["help","🤖 Help"]];
+  const tabs = [["home",t("🏠 Home","🏠 Home")],["store",t("🛒 Duka","🛒 Store")],["coins","🪙 Coins"],["game",t("🍎 Mchezo","🍎 Game")],["market",t("🛍️ Masoko","🛍️ Marketplace")],["ads",t("📣 Matangazo","📣 Ads")],["help","❓ Help"],["ai","🤖 AI"],["intro","🎬 Intro"],["chat","💬 Chat"]];
   document.getElementById("nav-tabs").innerHTML = tabs.map(([key,label]) => `
     <button data-tab="${key}" class="chip px-3 py-1.5 rounded-full whitespace-nowrap ${state.tab===key ? "bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950" : "text-slate-400 hover:text-slate-200 bg-slate-900/60"}">${label}</button>`).join("");
 }
@@ -448,7 +528,7 @@ function renderNav(){
 function renderBottomNav(){
   const el = document.getElementById("bottom-nav");
   if(!el) return;
-  const tabs = [["home","🏠","Home"],["store","🛒","Store"],["coins","🪙","Coins"],["library","📚","Library"],["account","👤","Account"]];
+  const tabs = [["home","🏠",t("Home","Home")],["store","🛒",t("Duka","Store")],["coins","🪙","Coins"],["library","📚",t("Maktaba","Library")],["account","👤",t("Akaunti","Account")]];
   el.innerHTML = tabs.map(([key,icon,label]) => `
     <button data-tab="${key}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold ${state.tab===key ? "text-amber-400" : "text-slate-500"}">
       <span class="text-lg leading-none">${icon}</span>${label}
@@ -982,23 +1062,21 @@ function marketFormHtml(){
 function renderMarket(){
   const approved = state.marketplace.filter(m=>m.status==="approved");
   const mine = state.user ? state.marketplace.filter(m=>m.userPhone===state.user.phone && m.status!=="approved") : [];
+  const view = state.marketView || "products";
   return `
   <div class="flex items-center gap-2 mb-1"><span class="text-violet-400">🛍️</span><h2 class="font-bold">Masoko — Uza / Nunua Vifaa</h2></div>
-  <p class="text-slate-500 text-xs mb-4">Weka bidhaa yako iuzwe, au wasiliana moja kwa moja na muuzaji kwa namba yake ya simu.</p>
-  ${!state.user ? `<p class="text-amber-300 text-xs mb-4">Ingia kwanza ili uweze kuweka bidhaa yako.</p>` : marketFormHtml()}
-  ${mine.length>0 ? `
-  <div class="mb-6">
-    <p class="text-xs font-bold text-slate-400 mb-2">Bidhaa Zako Zinazosubiri/Zilizokataliwa</p>
-    <div class="space-y-2">
-      ${mine.map(m=>`<div class="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg p-2 text-xs">
-        <span>${esc(m.productName)} — ${esc(m.price)}</span>
-        <span class="${m.status==="rejected" ? "text-rose-400" : "text-amber-300"} font-bold">${m.status==="rejected" ? "Imekataliwa" : "Inasubiri Idhini"}</span>
-      </div>`).join("")}
-    </div>
-  </div>` : ""}
-  <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">🗂️</span><h3 class="font-bold text-sm">Bidhaa Zilizopo (${approved.length})</h3></div>
-  ${approved.length===0 ? `<p class="text-slate-500 text-sm">Hakuna bidhaa bado. Kuwa wa kwanza kuuza!</p>`
-    : `<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${approved.map(marketCard).join("")}</div>`}`;
+  <p class="text-slate-500 text-xs mb-4">Chagua sehemu unayotaka: tazama bidhaa zilizopo au weka bidhaa yako iuzwe.</p>
+  <div class="grid grid-cols-2 gap-2 mb-5">
+    <button data-action="market-view" data-view="products" class="py-2.5 rounded-lg text-xs sm:text-sm font-bold border ${view==="products" ? "bg-emerald-500 text-slate-950 border-emerald-400" : "bg-slate-900 text-slate-400 border-slate-800 hover:border-emerald-400/50"}">🗂️ Bidhaa Zilizopo</button>
+    <button data-action="market-view" data-view="sell" class="py-2.5 rounded-lg text-xs sm:text-sm font-bold border ${view==="sell" ? "bg-amber-500 text-slate-950 border-amber-400" : "bg-slate-900 text-slate-400 border-slate-800 hover:border-amber-400/50"}">➕ Weka Bidhaa</button>
+  </div>
+  ${view==="sell" ? `
+    ${!state.user ? `<div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4"><p class="text-amber-300 text-sm mb-3">Ingia kwanza ili uweze kuweka bidhaa yako.</p><button data-action="open-auth" class="bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs">Ingia / Jisajili</button></div>` : marketFormHtml()}
+    ${mine.length>0 ? `<div class="mt-5"><p class="text-xs font-bold text-slate-400 mb-2">Bidhaa Zako Zinazosubiri/Zilizokataliwa</p><div class="space-y-2">${mine.map(m=>`<div class="flex items-center justify-between bg-slate-900/60 border border-slate-800 rounded-lg p-2 text-xs"><span>${esc(m.productName)} — ${esc(m.price)}</span><span class="${m.status==="rejected" ? "text-rose-400" : "text-amber-300"} font-bold">${m.status==="rejected" ? "Imekataliwa" : "Inasubiri Idhini"}</span></div>`).join("")}</div></div>` : ""}
+  ` : `
+    <div class="flex items-center gap-2 mb-3"><span class="text-emerald-400">🗂️</span><h3 class="font-bold text-sm">Bidhaa Zilizopo (${approved.length})</h3></div>
+    ${approved.length===0 ? `<div class="bg-slate-900/60 border border-slate-800 rounded-xl p-6 text-center"><p class="text-slate-500 text-sm">Hakuna bidhaa zilizoidhinishwa bado.</p><button data-action="market-view" data-view="sell" class="mt-3 bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs">➕ Weka Bidhaa ya Kwanza</button></div>` : `<div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${approved.map(marketCard).join("")}</div>`}
+  `}`;
 }
 
 /* ================= Coins: balance, buy packages, spin wheel ================= */
@@ -1119,6 +1197,45 @@ const FAQ_ITEMS = [
   { q:"Nimesahau password, nifanyeje?", a:"Kwa sasa huduma ya 'forgot password' haipo. Wasiliana na admin kupitia namba iliyo hapa chini kwa msaada." },
 ];
 function helpAiPrompt(q){ return `Nataka msaada kuhusu: ${q}`; }
+function introVideoHtml(){
+  const url=(state.settings && (state.settings.introVideoUrl || state.settings.introVideo || state.settings.videoIntroUrl)) || (state.videoAd && state.videoAd.introVideoUrl) || (state.videoAd && state.videoAd.videoUrl) || '';
+  if(!url) return `<div class="aspect-video rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-center p-8"><div><div class="text-5xl mb-3">🎬</div><p class="font-bold">Intro video haijawekwa bado</p><p class="text-xs text-slate-500 mt-2">Admin ataweka video kupitia Dashboard.</p></div></div>`;
+  const yt=url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
+  if(yt) return `<div class="aspect-video rounded-2xl overflow-hidden border border-slate-800 bg-black"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${yt[1]}?autoplay=1&mute=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe></div>`;
+  return `<div class="aspect-video rounded-2xl overflow-hidden border border-slate-800 bg-black"><video class="w-full h-full object-cover" src="${esc(url)}" autoplay muted loop playsinline controls></video></div>`;
+}
+function renderIntro(){
+  return `<div class="fade-in max-w-5xl mx-auto">
+    <div class="text-center mb-5"><p class="text-amber-400 text-[11px] font-extrabold tracking-[.25em] uppercase">Karibu MaherGamingStore</p><h2 class="brandfont text-2xl sm:text-4xl font-extrabold mt-2">🎬 WEBSITE INTRODUCTION</h2><p class="text-xs sm:text-sm text-slate-400 mt-2">Tazama video yetu ya utambulisho na ujue kinachopatikana ndani ya MaherGamingStore.</p></div>
+    ${introVideoHtml()}
+    <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      ${[["🎮","Games","Gundua games na emulator mbalimbali."],["🛍️","Masoko","Nunua au uza vifaa vya gaming."],["💬","Online Chat","Wasiliana na admin kwa msaada." ]].map(x=>`<div class="bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-center"><div class="text-2xl">${x[0]}</div><p class="font-bold text-sm mt-1">${x[1]}</p><p class="text-[11px] text-slate-500 mt-1">${x[2]}</p></div>`).join('')}
+  </div>`;
+}
+function currentChatThread(){
+  if(!state.user) return null;
+  return state.onlineChats.find(t=>t.userPhone===state.user.phone) || {id:uid(),userPhone:state.user.phone,userName:state.user.name||state.user.phone,messages:[]};
+}
+function renderOnlineChat(){
+  const thread=currentChatThread();
+  if(!state.user) return `<div class="max-w-xl mx-auto bg-slate-900/70 border border-slate-800 rounded-2xl p-7 text-center"><div class="text-5xl mb-3">💬</div><h2 class="font-bold text-xl">Online Chat</h2><p class="text-xs text-slate-500 mt-2 mb-5">Ingia kwenye akaunti ili kuwasiliana moja kwa moja na admin.</p><button data-action="open-account" class="bg-gradient-to-r from-amber-500 to-violet-500 text-slate-950 font-bold px-5 py-2.5 rounded-full">👤 Ingia / Fungua Akaunti</button></div>`;
+  const msgs=thread.messages||[];
+  return `<div class="max-w-2xl mx-auto fade-in"><div class="flex items-center justify-between mb-4"><div><h2 class="font-bold text-xl">💬 Online Chat</h2><p class="text-xs text-slate-500">Wasiliana na admin wa MaherGamingStore.</p></div><span class="text-[10px] text-emerald-400">● Admin Online</span></div>
+    <div class="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden"><div id="online-chat-msgs" class="h-[430px] overflow-y-auto p-4 space-y-3">${msgs.map(m=>`<div class="flex ${m.from==='admin'?'justify-start':'justify-end'}"><div class="max-w-[82%] px-3 py-2 rounded-2xl text-xs ${m.from==='admin'?'bg-slate-800 text-slate-200 rounded-bl-sm':'bg-amber-500 text-slate-950 rounded-br-sm'}"><p>${esc(m.text)}</p><p class="text-[9px] opacity-50 mt-1">${m.at?new Date(m.at).toLocaleString():''}</p></div></div>`).join('')||`<p class="text-center text-xs text-slate-600 py-16">Anza mazungumzo na admin.</p>`}</div>
+    <div class="p-3 border-t border-slate-800 flex gap-2"><input id="online-chat-input" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-3 text-xs outline-none focus:border-amber-400" placeholder="Andika ujumbe kwa admin..."/><button data-action="send-online-chat" class="bg-amber-500 text-slate-950 font-bold px-4 rounded-xl">➤</button></div></div></div>`;
+}
+function renderAI(){
+  return `
+  <div class="flex items-center gap-2 mb-1"><span class="text-violet-400">🤖</span><h2 class="font-bold">ALTAImaher AI</h2></div>
+  <p class="text-slate-500 text-xs mb-5">AI imewekwa kwenye sehemu yake maalumu. Bonyeza hapa ndipo uanze mazungumzo.</p>
+  <div class="bg-gradient-to-br from-amber-500/15 to-violet-500/15 border border-slate-800 rounded-2xl p-6 text-center max-w-xl mx-auto">
+    <div class="w-16 h-16 mx-auto rounded-full bg-gradient-to-br from-amber-400 to-violet-500 flex items-center justify-center text-slate-950 text-xl font-bold mb-3">AI</div>
+    <p class="font-bold text-lg mb-1">ALTAImaher robot</p>
+    <p class="text-xs text-slate-400 mb-5">Uliza kuhusu games, malipo, Coins, VIP, emulator, Masoko, account na msaada wa website.</p>
+    <button data-action="open-chat" class="bg-gradient-to-r from-amber-500 to-violet-500 hover:opacity-90 text-slate-950 font-bold text-sm px-6 py-3 rounded-full">💬 Fungua AI</button>
+  </div>`;
+}
+
 function renderHelp(){
   const supportPhone = state.settings.paymentPhone || "";
   const supportNetwork = state.settings.paymentNetwork || "";
@@ -1127,16 +1244,9 @@ function renderHelp(){
   <div class="flex items-center gap-2 mb-1"><span class="text-amber-400">🤖</span><h2 class="font-bold">Help Center</h2></div>
   <p class="text-slate-500 text-xs mb-5">Msaada wa haraka, maswali ya kawaida, na njia za kuwasiliana nasi.</p>
 
-  <div class="bg-gradient-to-br from-amber-500/15 to-violet-500/15 border border-slate-800 rounded-2xl p-5 mb-6 text-center">
-    <p class="text-3xl mb-2">🤖</p>
-    <p class="font-bold mb-1">ALTAImaher AI Assistant</p>
-    <p class="text-xs text-slate-400 mb-3">Uliza chochote — malipo, coins, VIP, emulator, marketplace, account n.k.</p>
-    <button data-action="open-chat" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-full">💬 Anza Kuongea na AI</button>
-  </div>
-
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
     ${[["🎮","Game Help","download game, emulator"],["💳","Payment Help","malipo, coins, VIP"],["👤","Account Help","akaunti, password"],["⚙️","Technical Help","tatizo la kiufundi"]].map(([icon,label,q])=>`
-      <button data-action="ask-ai-topic" data-q="${esc(q)}" class="bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-3 text-center glow-card">
+      <button data-action="help-topic" data-q="${esc(q)}" class="bg-slate-900/60 border border-slate-800 hover:border-amber-500/50 rounded-xl p-3 text-center glow-card">
         <p class="text-xl mb-1">${icon}</p><p class="text-[11px] font-bold">${label}</p>
       </button>`).join("")}
   </div>
@@ -1229,6 +1339,9 @@ function _renderApp(){
   else if(state.tab==="ads") app.innerHTML = renderAds();
   else if(state.tab==="market") app.innerHTML = renderMarket();
   else if(state.tab==="help") app.innerHTML = renderHelp();
+  else if(state.tab==="ai") app.innerHTML = renderAI();
+  else if(state.tab==="intro") app.innerHTML = renderIntro();
+  else if(state.tab==="chat") app.innerHTML = renderOnlineChat();
   else if(state.tab==="library") app.innerHTML = renderLibrary();
   else if(state.tab==="account") app.innerHTML = renderAccount();
   renderHeader();
@@ -1717,10 +1830,8 @@ function openChatWidget(prefill){
     renderChat();
   }
 }
-document.getElementById("chat-toggle").addEventListener("click", () => {
-  document.getElementById("chat-box").classList.toggle("hidden");
-  renderChat();
-});
+// AI is opened only from the dedicated AI tab/button. No floating AI button is shown.
+
 document.getElementById("chat-send").addEventListener("click", sendChat);
 document.getElementById("chat-input").addEventListener("keydown", (e) => { if(e.key==="Enter") sendChat(); });
 
@@ -1761,6 +1872,23 @@ document.addEventListener("click", async (e) => {
   if(!act) return;
   const action = act.dataset.action;
 
+  if(action === "fruit-start"){
+    await fruitStart();
+    return;
+  }
+  if(action === "fruit-back"){
+    if(fruitGame.running) await fruitEnd(false);
+    fruitGame = { status:"idle", score:0, timeLeft:FRUIT_GAME_SECONDS, running:false, lost:false };
+    renderApp();
+    return;
+  }
+  if(action === "market-view"){
+    if(state.marketView === "sell" && act.dataset.view !== "sell") syncMarketFormFromDom();
+    state.marketView = act.dataset.view === "sell" ? "sell" : "products";
+    renderApp();
+    return;
+  }
+
   if(action === "open-auth"){ openModal({type:"auth", mode:"login"}); return; }
 
   if(action === "toggle-notifs"){
@@ -1774,8 +1902,17 @@ document.addEventListener("click", async (e) => {
     renderHeader();
     return;
   }
+  if(action === "send-online-chat"){
+    if(!state.user) return;
+    const input=document.getElementById("online-chat-input"); const text=(input&&input.value||"").trim(); if(!text) return;
+    const thread=currentChatThread(); const nextThread={...thread,messages:[...(thread.messages||[]),{id:uid(),from:"user",text,at:Date.now()}],updatedAt:Date.now()};
+    const next=state.onlineChats.filter(t=>t.userPhone!==state.user.phone); next.push(nextThread);
+    const ok=await setJSON(K.onlineChats,next); if(!ok){alert("Ujumbe haujahifadhiwa. Angalia internet.");return;} state.onlineChats=next; renderApp(); return;
+  }
+  if(action === "open-account"){ state.tab="account"; renderApp(); return; }
   if(action === "open-chat"){ openChatWidget(); return; }
-  if(action === "ask-ai-topic"){ openChatWidget(act.dataset.q); return; }
+  if(action === "ask-ai-topic"){ state.tab="ai"; renderApp(); setTimeout(() => openChatWidget(act.dataset.q), 0); return; }
+  if(action === "help-topic"){ return; }
   if(action === "copy-support-number"){
     const num = act.dataset.number;
     if(navigator.clipboard && num) navigator.clipboard.writeText(num).catch(()=>{});
@@ -1903,7 +2040,7 @@ document.addEventListener("click", async (e) => {
     const entered = document.getElementById("pin-code-input").value.trim();
     const g = state.games.find(x=>x.id===act.dataset.id);
     if(!g){ errorEl.textContent = "Game haikupatikana."; return; }
-    if(!entered || entered !== String(g.whatsappPin||"").trim()){
+    if(!entered || entered.toUpperCase() !== String(g.whatsappPin||"").trim().toUpperCase()){
       errorEl.textContent = "PIN sio sahihi. Jaribu tena au wasiliana na admin."; return;
     }
     const payments = await getJSON(K.payments, []);
@@ -2169,8 +2306,70 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+/* ================= promotional intro video ================= */
+function closeIntro(){
+  const screen=document.getElementById('intro-screen');
+  const video=document.getElementById('intro-video');
+  const yt=document.getElementById('intro-youtube');
+  if(video){ try{video.pause();}catch(e){} }
+  if(yt){ yt.src=''; }
+  if(screen){ screen.classList.add('intro-hidden'); setTimeout(()=>screen.remove(),500); }
+}
+
+function getYouTubeId(url){
+  const m=String(url||'').match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i);
+  return m ? m[1] : '';
+}
+function setupIntroVideo(){
+  const screen=document.getElementById('intro-screen');
+  const video=document.getElementById('intro-video');
+  const yt=document.getElementById('intro-youtube');
+  const empty=document.getElementById('intro-empty');
+  if(!screen || !video) return;
+  let url=(state.videoAd && state.videoAd.introVideoUrl) || (state.settings && (state.settings.introVideoUrl || state.settings.introVideo || state.settings.videoIntroUrl)) || '';
+  url=String(url||'').trim();
+  const ytId=getYouTubeId(url);
+  if(ytId){
+    video.pause(); video.removeAttribute('src'); video.classList.add('hidden');
+    if(yt){ yt.src=`https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&loop=1&playlist=${ytId}&controls=1&playsinline=1&rel=0`; yt.classList.remove('hidden'); }
+    if(empty) empty.classList.add('hidden');
+    return;
+  }
+  if(yt){ yt.src=''; yt.classList.add('hidden'); }
+  if(url){
+    video.src=url; video.autoplay=true; video.loop=true; video.muted=true; video.classList.remove('hidden');
+    if(empty) empty.classList.add('hidden');
+    video.play().catch(()=>{});
+  }else{
+    video.pause(); video.removeAttribute('src'); video.classList.add('hidden');
+    if(empty) empty.classList.remove('hidden');
+  }
+}
+
+document.addEventListener('click',(e)=>{
+  const action=e.target.closest('[data-intro-action]')?.dataset.introAction;
+  if(!action) return;
+  const video=document.getElementById('intro-video');
+  const yt=document.getElementById('intro-youtube');
+  if(action==='continue' || action==='skip'){ closeIntro(); return; }
+  if(action==='mute'){
+    if(video && !video.classList.contains('hidden')){
+      video.muted=!video.muted;
+      if(!video.muted){ try{video.volume=1; video.play();}catch(err){} }
+      e.target.dataset.soundState=video.muted?'off':'on'; e.target.textContent=video.muted ? t('🔇 Sauti imezimwa','🔇 Sound off') : t('🔊 Sauti imewashwa','🔊 Sound on');
+    }else if(yt && !yt.classList.contains('hidden')){
+      const turnOn=e.target.dataset.soundState!=='on';
+      yt.contentWindow?.postMessage(JSON.stringify({event:'command',func:turnOn?'unMute':'mute',args:[]}), '*');
+      e.target.dataset.soundState=turnOn?'on':'off';
+      e.target.textContent=turnOn ? t('🔊 Sauti imewashwa','🔊 Sound on') : t('🔇 Sauti imezimwa','🔇 Sound off');
+    }
+  }
+});
+
 /* ================= init ================= */
+setupIntroVideo();
 renderApp();
+updateIntroLanguage();
 if(!STORAGE_OK){
   const warn = document.createElement("div");
   warn.className = "max-w-6xl mx-auto px-4 pt-3 text-[11px] text-amber-300";
@@ -2179,6 +2378,7 @@ if(!STORAGE_OK){
 }
 (async function init(){
   await refreshAll();
+  setupIntroVideo();
   await bumpVisit();
   renderApp();
   setInterval(async () => {
